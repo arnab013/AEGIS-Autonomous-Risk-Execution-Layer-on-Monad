@@ -22,11 +22,12 @@ Autonomous onchain finance requires reasoning under market ambiguity without ris
 
 | Sponsor / Protocol | Integration Role in Aegis | Verification Status |
 | :--- | :--- | :--- |
-| **Monad** | High-throughput L1 execution (Chain ID 10143), pipelined block processing, sub-second transaction settlement. | **Live / Tested** |
-| **TypeSafe AI (Jev)** | Bounded System One probabilistic policy model returning discrete probability distributions over Action, Regime, and Risk with entropy metrics. | **Live / Tested** |
+| **Monad** | High-throughput L1 execution (Chain ID 10143), pipelined block processing, sub-second transaction settlement. Verified against live testnet RPC `testnet-rpc.monad.xyz` (Block >68M, ~34ms RTT). | **Live / Verified** |
+| **TypeSafe AI (Jev)** | Bounded System One probabilistic policy model returning discrete probability distributions over Action, Regime, and Risk with Shannon entropy metrics and automated abstention. | **Live / Verified** |
 | **Kuru** | Onchain CLOB spot trading venue for MON/USDC, orderbook depth streaming, limit order placement, and atomic batch cancellation. | **Integrated** |
 | **Perpl** | Onchain perpetuals DEX enabling dynamic short delta hedging of spot MON holdings during volatility shocks. | **Integrated** |
-| **Envio** | HyperSync and HyperRPC low-latency indexing of agent decisions, risk checks, and verifiable execution receipts. | **Integrated** |
+| **Envio** | HyperSync and HyperRPC low-latency indexing of agent decisions, risk checks, and verifiable execution receipts. Verified live at `monad-testnet.hypersync.xyz` (Indexed height synchronized with Monad). | **Live / Verified** |
+| **MetaMask Agent Wallet** | Scoped session delegation keys (ERC-7715 style), whitelisted execution venues, per-tx & cumulative spend caps, and instant 1-click user revocation. | **Audited / Tested** |
 | **Smart Contract Guard** | `PolicyGuard.sol` deployed on Monad enforcing onchain venue, token, and notional spend caps. | **Audited / Tested** |
 
 ---

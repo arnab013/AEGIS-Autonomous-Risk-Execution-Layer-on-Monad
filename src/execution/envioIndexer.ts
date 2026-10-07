@@ -45,4 +45,26 @@ export class EnvioIndexer {
   public async queryIndexedEvents(limit: number = 20): Promise<AuditEvent[]> {
     return this.indexedEvents.slice(0, limit);
   }
+
+  /**
+   * Fetches latest block height indexed by Envio HyperSync on Monad Testnet.
+   */
+  public async getHyperSyncHeight(): Promise<number> {
+    try {
+      const res = await fetch(`${this.hyperSyncUrl}/height`);
+      if (!res.ok) return 0;
+      const data = await res.json();
+      return typeof data?.height === 'number' ? data.height : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Checks HyperSync API availability.
+   */
+  public async isLiveConnected(): Promise<boolean> {
+    const height = await this.getHyperSyncHeight();
+    return height > 0;
+  }
 }
