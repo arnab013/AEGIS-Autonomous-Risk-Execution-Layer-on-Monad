@@ -1,0 +1,40 @@
+# Local directories and storage isolation
+.local/
+.local*
+*.local
+
+# Environment variables & secrets
+.env
+.env*.local
+*.pem
+*.key
+*.secret
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+
+# IDE & OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Build and coverage
+out/
+coverage/
+.next/
+.turbo/
