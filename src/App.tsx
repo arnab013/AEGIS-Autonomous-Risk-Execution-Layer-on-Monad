@@ -9,6 +9,8 @@ import { ExplainabilityModal } from './components/ExplainabilityModal.tsx';
 import { AuditTrailPanel } from './components/AuditTrailPanel.tsx';
 import { ReplayControlBar } from './components/ReplayControlBar.tsx';
 import { StateEngine, EngineCycleOutput } from './engine/stateEngine.ts';
+import { JevPolicyEngine } from './jev/policyEngine.ts';
+import { JevClient } from './jev/client.ts';
 import { REPLAY_SCENARIOS } from './data/scenarios.ts';
 import { MonadClient } from './execution/monadClient.ts';
 import { AuditEvent } from './types/index.ts';
@@ -108,6 +110,16 @@ export const App: React.FC = () => {
     });
   };
 
+  // Handle Operation Mode Toggle (Replay vs Live Monad + TypeSafe Jev)
+  const handleToggleMode = (mode: 'replay' | 'live') => {
+    setOperationMode(mode);
+    if (engineRef.current) {
+      engineRef.current.jevPolicy = new JevPolicyEngine(
+        new JevClient({ mode: mode === 'live' ? 'live' : 'simulated' })
+      );
+    }
+  };
+
   if (!engineState) {
     return (
       <div className="min-h-screen bg-[#08090c] text-white flex items-center justify-center font-mono text-sm">
@@ -123,7 +135,7 @@ export const App: React.FC = () => {
         isPaused={engineRef.current.policy.is_paused}
         onTogglePause={togglePause}
         operationMode={operationMode}
-        onToggleMode={setOperationMode}
+        onToggleMode={handleToggleMode}
         rpcLatencyMs={rpcLatencyMs}
         blockNumber={blockNumber}
       />

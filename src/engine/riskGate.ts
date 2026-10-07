@@ -49,7 +49,8 @@ export class HardRiskGate {
     }
 
     // 3. Max Position Limit
-    const prospectiveExposure = position.spot_exposure_usd + (proposedAction === 'increase_position' ? orderSizeUsd : 0);
+    const spotExp = position.spot_exposure_usd ?? 0;
+    const prospectiveExposure = spotExp + (proposedAction === 'increase_position' ? orderSizeUsd : 0);
     const positionLimitPassed = prospectiveExposure <= policy.max_position_usd;
     checks['max_position_usd'] = {
       passed: positionLimitPassed,
@@ -60,7 +61,9 @@ export class HardRiskGate {
     }
 
     // 4. Max Leverage Limit
-    const collateralEquity = Math.max(1, position.usdc_balance + position.unrealized_pnl);
+    const usdc = typeof position.usdc_balance === 'number' ? position.usdc_balance : 1000;
+    const pnl = typeof position.unrealized_pnl === 'number' ? position.unrealized_pnl : 0;
+    const collateralEquity = Math.max(1, usdc + pnl);
     const prospectiveLeverage = prospectiveExposure / collateralEquity;
     const leverageLimitPassed = prospectiveLeverage <= policy.max_leverage;
     checks['max_leverage'] = {
@@ -72,7 +75,8 @@ export class HardRiskGate {
     }
 
     // 5. Max Daily Loss / Drawdown Limit
-    const totalLossToday = Math.min(0, position.realized_pnl_today + position.unrealized_pnl);
+    const realizedPnl = typeof position.realized_pnl_today === 'number' ? position.realized_pnl_today : 0;
+    const totalLossToday = Math.min(0, realizedPnl + pnl);
     const lossLimitPassed = Math.abs(totalLossToday) < policy.max_daily_loss;
     checks['max_daily_loss'] = {
       passed: lossLimitPassed,

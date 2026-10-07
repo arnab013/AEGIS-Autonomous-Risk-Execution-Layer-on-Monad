@@ -38,7 +38,8 @@ export class PerplClient {
     await new Promise((r) => setTimeout(r, 140)); // Fast Monad block execution
     const latency = Math.round(performance.now() - startTime);
 
-    const hedgedAmountMon = Number((notionalUsd / currentMidPrice).toFixed(4));
+    const safePrice = currentMidPrice > 0 ? currentMidPrice : 1;
+    const hedgedAmountMon = Number((notionalUsd / safePrice).toFixed(4));
     const randomHex = Array.from({ length: 64 }, () =>
       Math.floor(Math.random() * 16).toString(16)
     ).join('');

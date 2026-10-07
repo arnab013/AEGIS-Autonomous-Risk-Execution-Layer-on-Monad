@@ -81,4 +81,39 @@ describe('MetaMask Agent Wallet Scoped Delegation', () => {
     expect(result.allowed).toBe(false);
     expect(result.reason).toContain('revoked');
   });
+
+  it('blocks transaction exceeding daily spend limit', () => {
+    const manager = new AgentWalletManager({
+      allowedVenues: ['kuru_router'],
+      maxNotionalSpendUsd: 20000,
+      dailyLimitUsd: 3000,
+      maxSpendPerTxUsd: 2000,
+    });
+
+    manager.recordExecution(1800);
+
+    const result = manager.validateDelegatedTx({
+      targetVenue: 'kuru_router',
+      amountUsd: 1500, // 1800 + 1500 = 3300 > 3000
+      action: 'place_order',
+    });
+
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toContain('exceed daily limit');
+  });
+
+  it('blocks transaction after session expiry timestamp', () => {
+    const manager = new AgentWalletManager({
+      expiresAt: Date.now() - 1000, // expired 1s ago
+    });
+
+    const result = manager.validateDelegatedTx({
+      targetVenue: 'kuru_router',
+      amountUsd: 100,
+      action: 'place_order',
+    });
+
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toContain('expired');
+  });
 });

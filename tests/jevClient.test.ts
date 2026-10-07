@@ -134,7 +134,7 @@ describe('Jev Client & Confidence Suite', () => {
   });
 
   it('uses cached responses for identical state hashes without re-evaluating', async () => {
-    const client = new JevClient({ enableCache: true });
+    const client = new JevClient({ enableCache: true, mode: 'simulated' });
     const payload = buildJevStatePayload(
       { pair: 'MON/USDC', mid_price: 4.0, spread_bps: 3.5, return_10s: 0, return_1m: 0, volatility_1m: 0.01, volatility_5m: 0.01, bid_depth_25bps: 10000, ask_depth_25bps: 10000, orderbook_imbalance: 0, aggressive_buy_flow: 0, aggressive_sell_flow: 0 } as any,
       { spot_exposure_usd: 500, perp_exposure_usd: 0, net_delta: 500, leverage: 0.5, unrealized_pnl: 0, realized_pnl_today: 0, drawdown_today: 0 } as any,
@@ -148,5 +148,26 @@ describe('Jev Client & Confidence Suite', () => {
 
     expect(second.source).toBe('cached');
     expect(second.selected_action).toBe(first.selected_action);
+  });
+
+  it('queries live TypeSafe AI System One endpoint when configured in live mode', async () => {
+    const key = process.env.TYPESAFE_API_KEY;
+    if (!key) return;
+
+    const client = new JevClient({ apiKey: key, mode: 'live', enableCache: false });
+    const payload = buildJevStatePayload(
+      { pair: 'MON/USDC', mid_price: 4.0, spread_bps: 4.5, return_10s: 0, return_1m: 0.001, volatility_1m: 0.012, volatility_5m: 0.018, bid_depth_25bps: 18000, ask_depth_25bps: 17500, orderbook_imbalance: 0.02, aggressive_buy_flow: 500, aggressive_sell_flow: 400 } as any,
+      { spot_exposure_usd: 1000, perp_exposure_usd: 0, net_delta: 1000, leverage: 0.8, unrealized_pnl: 10, realized_pnl_today: 15, drawdown_today: 0.2 } as any,
+      { open_orders: [], oldest_order_age: 0, distance_from_mid: 0, filled_recently: 0 } as any,
+      { position_utilization: 0.5, leverage_utilization: 0.4, daily_loss_utilization: 0.05, volatility_percentile: 25, liquidity_stress_score: 15 } as any,
+      { max_position_usd: 2000, max_leverage: 2.0, max_daily_loss: 400, permitted_actions: ['hold', 'increase_position'] } as any
+    );
+
+    const decision = await client.evaluate(payload);
+    expect(decision.source).toBe('typesafe_jev');
+    expect(decision.action_probabilities).toBeDefined();
+    expect(decision.regime_probabilities).toBeDefined();
+    expect(decision.risk_probabilities).toBeDefined();
+    expect(decision.selected_action).toBeDefined();
   });
 });

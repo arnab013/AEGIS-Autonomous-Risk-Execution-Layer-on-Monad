@@ -15,9 +15,19 @@ export const ExplainabilityModal: React.FC<ExplainabilityModalProps> = ({
   onClose,
   auditEvent,
 }) => {
-  if (!isOpen) return null;
+  if (!isOpen || !auditEvent) return null;
 
-  const { factors, selected_action, execution_allowed } = auditEvent;
+  const factors = auditEvent.factors || {
+    volatility_percentile: 0,
+    sell_imbalance: 0,
+    spot_exposure_utilization: 0,
+    p_selected_action: 0,
+    p_high_or_critical_risk: 0,
+    policy_permitted: true,
+    position_limit_satisfied: true,
+  };
+  const selected_action = auditEvent.selected_action || 'hold';
+  const execution_allowed = auditEvent.execution_allowed ?? true;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4">

@@ -24,6 +24,7 @@ import {
 } from './marketMath.ts';
 import { HardRiskGate } from './riskGate.ts';
 import { JevPolicyEngine } from '../jev/policyEngine.ts';
+import { JevClient } from '../jev/client.ts';
 import { KuruClient } from '../execution/kuruClient.ts';
 import { PerplClient } from '../execution/perplClient.ts';
 import { EnvioIndexer } from '../execution/envioIndexer.ts';
@@ -116,7 +117,7 @@ export class StateEngine {
     };
 
     this.riskGate = new HardRiskGate();
-    this.jevPolicy = jevPolicyEngine || new JevPolicyEngine();
+    this.jevPolicy = jevPolicyEngine || new JevPolicyEngine(new JevClient({ mode: 'simulated' }));
     this.kuruClient = new KuruClient();
     this.perplClient = new PerplClient();
     this.envioIndexer = new EnvioIndexer();

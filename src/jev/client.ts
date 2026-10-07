@@ -16,6 +16,7 @@ export interface JevClientConfig {
   model?: string;
   timeoutMs?: number;
   enableCache?: boolean;
+  mode?: 'live' | 'simulated' | 'auto';
 }
 
 export class JevClient {
@@ -24,14 +25,16 @@ export class JevClient {
   private model: string;
   private timeoutMs: number;
   private enableCache: boolean;
+  private mode: 'live' | 'simulated' | 'auto';
   private cache: Map<string, JevDecisionState> = new Map();
 
   constructor(config: JevClientConfig = {}) {
     this.apiKey = config.apiKey || (typeof process !== 'undefined' ? process.env?.TYPESAFE_API_KEY : '') || '';
-    this.apiUrl = config.apiUrl || 'https://api.typesafe.ai/v1';
-    this.model = config.model || 'jev-v1.2-decision';
+    this.apiUrl = config.apiUrl || 'https://api.typesafe.ai/v1/systemone';
+    this.model = config.model || 'jev-latest';
     this.timeoutMs = config.timeoutMs || 2500;
     this.enableCache = config.enableCache ?? true;
+    this.mode = config.mode || (process.env.JEV_MODE as any) || (config.apiKey ? 'live' : 'simulated');
   }
 
   /**
@@ -48,8 +51,8 @@ export class JevClient {
 
     const startTime = performance.now();
 
-    // If an external TypeSafe AI API key is configured and not in purely offline/replay mode, attempt HTTP request
-    if (this.apiKey && this.apiKey !== 'your_typesafe_api_key_here') {
+    // If configured for live or auto mode with an active API key, query the live TypeSafe AI model
+    if ((this.mode === 'live' || (this.mode === 'auto' && this.apiKey)) && this.apiKey && this.apiKey !== 'your_typesafe_api_key_here') {
       try {
         const response = await this.queryRemoteJev(payload);
         const latency = Math.round(performance.now() - startTime);
@@ -64,7 +67,11 @@ export class JevClient {
         return decisionState;
       } catch (err) {
         console.warn('[JevClient] Remote API call failed or timed out. Engaging safe fallback policy.', err);
-        return this.generateFallbackState(payload, Math.round(performance.now() - startTime));
+        const fallback = this.generateFallbackState(payload, Math.round(performance.now() - startTime));
+        if (this.enableCache) {
+          this.cache.set(cacheKey, fallback);
+        }
+        return fallback;
       }
     }
 
@@ -86,14 +93,16 @@ export class JevClient {
   }
 
   /**
-   * Queries the TypeSafe AI / Jev REST endpoint.
+   * Queries the TypeSafe AI / Jev REST endpoint (POST /v1/systemone).
    */
   private async queryRemoteJev(payload: JevStatePayload): Promise<Omit<JevDecisionState, 'latency_ms' | 'source'>> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
 
+    const promptState = `Market State: pair=${payload.market.pair}, mid_price=${payload.market.mid_price}, spread_bps=${payload.market.spread_bps}, return_1m=${(payload.market.return_1m * 100).toFixed(2)}%, volatility_1m=${(payload.market.volatility_1m * 100).toFixed(2)}%, imbalance=${payload.market.orderbook_imbalance.toFixed(2)}, buy_flow=${payload.market.aggressive_buy_flow}, sell_flow=${payload.market.aggressive_sell_flow}. Position: spot_exposure_usd=${payload.position.spot_exposure_usd}, perp_exposure_usd=${payload.position.perp_exposure_usd}, net_delta=${payload.position.net_delta}, leverage=${payload.position.leverage}x, drawdown_today=${payload.position.drawdown_today}%. Risk: position_utilization=${(payload.risk.position_utilization * 100).toFixed(1)}%, volatility_percentile=${payload.risk.volatility_percentile}, liquidity_stress=${payload.risk.liquidity_stress_score}. Orders: open=${payload.orders.open_orders_count}, oldest_age_sec=${payload.orders.oldest_order_age}.`;
+
     try {
-      const res = await fetch(`${this.apiUrl}/decide`, {
+      const res = await fetch(this.apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -101,14 +110,51 @@ export class JevClient {
         },
         body: JSON.stringify({
           model: this.model,
-          state: payload,
-          questions: [
-            { id: 'action', options: ['increase_position', 'reduce_position', 'hold', 'hedge', 'cancel_orders'] },
-            { id: 'regime', options: ['trending_up', 'trending_down', 'range_bound', 'high_volatility', 'liquidity_stress', 'uncertain'] },
-            { id: 'risk', options: ['very_low', 'low', 'moderate', 'high', 'critical'] },
-            { id: 'anomaly', options: ['yes', 'no'] },
-            { id: 'cancel_orders', options: ['yes', 'no'] }
-          ]
+          state: promptState,
+          questions: {
+            action: {
+              type: 'choice',
+              instructions: 'Which bounded trading action should be taken for this portfolio?',
+              criteria: {
+                increase_position: 'Market is liquid and trending up; increase exposure',
+                reduce_position: 'Market is weakening or risk high; reduce exposure',
+                hold: 'Market is range-bound, balanced, or uncertain; hold current inventory',
+                hedge: 'Downside volatility or risk spike; open protective short perp hedge',
+                cancel_orders: 'Adverse flow, liquidity vacuum, or stale orders; cancel open orders'
+              }
+            },
+            regime: {
+              type: 'choice',
+              instructions: 'What is the current market regime?',
+              criteria: {
+                trending_up: 'Orderbook skew and price drift upward',
+                trending_down: 'Orderbook skew and price drift downward',
+                range_bound: 'Spread tight, price oscillating in range',
+                high_volatility: 'Rapid spread widening and volatility spike',
+                liquidity_stress: 'Book depth evaporating, toxic flow',
+                uncertain: 'Ambiguous or mixed market conditions'
+              }
+            },
+            risk: {
+              type: 'choice',
+              instructions: 'What is the current portfolio risk tier?',
+              criteria: {
+                very_low: 'Spread tight, zero inventory stress, volatility calm',
+                low: 'Normal trading variance, low exposure',
+                moderate: 'Elevated spread or inventory imbalance',
+                high: 'High volatility or near exposure limit',
+                critical: 'Extreme drawdown or liquidity shock'
+              }
+            },
+            anomaly: {
+              type: 'noul',
+              instructions: 'Is there an anomalous or dangerous market condition?'
+            },
+            cancel_orders: {
+              type: 'noul',
+              instructions: 'Should existing open maker orders be cancelled immediately?'
+            }
+          }
         }),
         signal: controller.signal
       });
@@ -128,23 +174,27 @@ export class JevClient {
    * Validates and normalizes probabilities returned from Jev.
    */
   private parseAndValidateResponse(data: any, payload: JevStatePayload): Omit<JevDecisionState, 'latency_ms' | 'source'> {
+    const rawAction = data.answers?.action?.probabilities || data.action || {};
+    const rawRegime = data.answers?.regime?.probabilities || data.regime || {};
+    const rawRisk = data.answers?.risk?.probabilities || data.risk || {};
+
     const actionProbs = this.normalizeDistribution<TradingAction>(
-      data.action || {},
+      rawAction,
       ['increase_position', 'reduce_position', 'hold', 'hedge', 'cancel_orders']
     );
 
     const regimeProbs = this.normalizeDistribution<MarketRegime>(
-      data.regime || {},
+      rawRegime,
       ['trending_up', 'trending_down', 'range_bound', 'high_volatility', 'liquidity_stress', 'uncertain']
     );
 
     const riskProbs = this.normalizeDistribution<RiskLevel>(
-      data.risk || {},
+      rawRisk,
       ['very_low', 'low', 'moderate', 'high', 'critical']
     );
 
-    const p_anomaly = Math.min(1, Math.max(0, Number(data.anomaly?.yes ?? 0.05)));
-    const p_cancel_orders = Math.min(1, Math.max(0, Number(data.cancel_orders?.yes ?? 0.1)));
+    const p_anomaly = Math.min(1, Math.max(0, Number(data.answers?.anomaly?.noul ?? data.anomaly?.yes ?? 0.05)));
+    const p_cancel_orders = Math.min(1, Math.max(0, Number(data.answers?.cancel_orders?.noul ?? data.cancel_orders?.yes ?? 0.1)));
 
     const conf = calculateConfidence(actionProbs);
     const selected_action = this.selectTopAction(actionProbs, riskProbs, conf.should_abstain);

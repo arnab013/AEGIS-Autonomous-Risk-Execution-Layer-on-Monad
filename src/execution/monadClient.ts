@@ -44,6 +44,7 @@ export class MonadClient {
       });
       if (!res.ok) throw new Error(`HTTP error ${res.status}`);
       const data = await res.json();
+      if (data?.error) throw new Error(data.error.message || `RPC error ${data.error.code}`);
       return data.result;
     } finally {
       clearTimeout(timeout);

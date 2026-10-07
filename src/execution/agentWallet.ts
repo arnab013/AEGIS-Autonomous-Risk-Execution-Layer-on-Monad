@@ -113,6 +113,14 @@ export class AgentWalletManager {
       };
     }
 
+    if (this.session.dailyLimitUsd > 0 && projectedSpend > this.session.dailyLimitUsd) {
+      return {
+        allowed: false,
+        reason: `Cumulative spend would exceed daily limit $${this.session.dailyLimitUsd}`,
+        remainingAllowanceUsd: Math.max(0, this.session.dailyLimitUsd - this.session.cumulativeSpentUsd),
+      };
+    }
+
     return {
       allowed: true,
       remainingAllowanceUsd: this.session.maxNotionalSpendUsd - projectedSpend,
