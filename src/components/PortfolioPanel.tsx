@@ -9,6 +9,8 @@ interface PortfolioPanelProps {
   orders: OrdersState;
   policy: UserPolicy;
   risk: RiskMetrics;
+  live?: boolean;
+  hasWallet?: boolean;
 }
 
 export const PortfolioPanel: React.FC<PortfolioPanelProps> = ({
@@ -16,6 +18,8 @@ export const PortfolioPanel: React.FC<PortfolioPanelProps> = ({
   orders,
   policy,
   risk,
+  live = false,
+  hasWallet = false,
 }) => {
   const isNetBullish = position.net_delta > 0;
   const isPnlPositive = position.realized_pnl_today + position.unrealized_pnl >= 0;
@@ -27,7 +31,7 @@ export const PortfolioPanel: React.FC<PortfolioPanelProps> = ({
           <Wallet className="w-4 h-4 text-emerald-400" />
           <span className="font-mono text-xs font-bold text-white tracking-wider">PORTFOLIO & RISK ALLOCATION</span>
         </div>
-        <span className="text-[11px] font-mono text-emerald-400">STATUS: REBALANCED</span>
+        <span className="text-[11px] font-mono text-emerald-400">{live ? hasWallet ? 'WALLET BALANCES' : 'WALLET DISCONNECTED' : 'PAPER PORTFOLIO'}</span>
       </div>
 
       <div className="p-3 space-y-3 flex-1 overflow-y-auto">
@@ -37,22 +41,22 @@ export const PortfolioPanel: React.FC<PortfolioPanelProps> = ({
             <span className="text-[10px] uppercase font-mono text-[#64748b]">Net Portfolio Delta</span>
             <span className={`text-lg font-bold font-mono flex items-center gap-1 ${isNetBullish ? 'text-emerald-400' : 'text-amber-400'}`}>
               {isNetBullish ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
-              ${position.net_delta.toFixed(2)}
+              {live && !hasWallet ? '—' : `$${position.net_delta.toFixed(2)}`}
             </span>
           </div>
 
           <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#1a1f2c] text-xs font-mono">
             <div>
               <span className="text-[10px] text-[#64748b] block">Spot Exposure (Kuru)</span>
-              <span className="font-semibold text-white">${position.spot_exposure_usd.toFixed(2)}</span>
-              <span className="text-[10px] text-[#64748b] block">({position.spot_balance_mon.toFixed(1)} MON)</span>
+              <span className="font-semibold text-white">{live && !hasWallet ? 'Connect wallet' : `$${position.spot_exposure_usd.toFixed(2)}`}</span>
+              <span className="text-[10px] text-[#64748b] block">{live && !hasWallet ? 'MON and USDC holdings' : `(${position.spot_balance_mon.toFixed(1)} MON)`}</span>
             </div>
             <div className="text-right">
-              <span className="text-[10px] text-[#64748b] block">Perp Hedge (Perpl)</span>
+              <span className="text-[10px] text-[#64748b] block">{live ? 'Perps not indexed' : 'Paper short hedge'}</span>
               <span className={`font-semibold ${position.perp_exposure_usd < 0 ? 'text-rose-400' : 'text-[#64748b]'}`}>
-                ${position.perp_exposure_usd.toFixed(2)}
+                {live ? '—' : `$${position.perp_exposure_usd.toFixed(2)}`}
               </span>
-              <span className="text-[10px] text-[#64748b] block">({position.perp_short_size_mon.toFixed(1)} Short)</span>
+              <span className="text-[10px] text-[#64748b] block">{live ? 'Unavailable' : `(${position.perp_short_size_mon.toFixed(1)} Short)`}</span>
             </div>
           </div>
         </div>
@@ -91,15 +95,15 @@ export const PortfolioPanel: React.FC<PortfolioPanelProps> = ({
         {/* PnL & Equity Details */}
         <div className="grid grid-cols-2 gap-2 bg-[#10131b] p-2.5 rounded border border-[#1a1f2c] text-xs font-mono">
           <div>
-            <span className="text-[10px] text-[#64748b] uppercase block">Total PnL Today</span>
+            <span className="text-[10px] text-[#64748b] uppercase block">{live ? 'Historical PnL unavailable' : 'Paper PnL'}</span>
             <span className={`font-bold text-sm ${isPnlPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
-              {isPnlPositive ? '+' : ''}${(position.realized_pnl_today + position.unrealized_pnl).toFixed(2)}
+              {live ? '—' : `${isPnlPositive ? '+' : ''}$${(position.realized_pnl_today + position.unrealized_pnl).toFixed(2)}`}
             </span>
           </div>
           <div className="text-right">
             <span className="text-[10px] text-[#64748b] uppercase block">Daily Loss Utilization</span>
             <span className="font-semibold text-white">
-              {(risk.daily_loss_utilization * 100).toFixed(1)}% / ${policy.max_daily_loss}
+              {live ? `Unknown / $${policy.max_daily_loss}` : `${(risk.daily_loss_utilization * 100).toFixed(1)}% / $${policy.max_daily_loss}`}
             </span>
           </div>
         </div>
@@ -113,7 +117,7 @@ export const PortfolioPanel: React.FC<PortfolioPanelProps> = ({
 
           {orders.open_orders.length === 0 ? (
             <div className="p-3 text-center text-xs font-mono text-[#64748b] bg-[#10131b] rounded border border-dashed border-[#1a1f2c]">
-              No resting open maker orders on Kuru
+              {live ? 'Resting orders are not indexed in this MVP' : 'No paper resting orders'}
             </div>
           ) : (
             <div className="space-y-1">

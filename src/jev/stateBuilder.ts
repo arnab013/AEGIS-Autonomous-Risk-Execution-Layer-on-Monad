@@ -1,6 +1,6 @@
 // src/jev/stateBuilder.ts - Compact state serialization for Jev Policy Engine
 
-import {
+import type {
   MarketState,
   PositionState,
   OrdersState,
@@ -8,6 +8,7 @@ import {
   RiskMetrics,
   JevStatePayload
 } from '../types/index.ts';
+import { keccak256, stringToHex } from 'viem';
 
 /**
  * Builds the compact structured JSON state representation required by Jev (Section 7).
@@ -68,6 +69,12 @@ export function buildJevStatePayload(
       max_leverage: pol.max_leverage ?? 2.0,
       max_daily_loss: pol.max_daily_loss ?? 400,
       allowed_actions: pol.permitted_actions || ['hold'],
+      max_order_size: pol.max_order_size,
+      max_slippage_bps: pol.max_slippage_bps,
+      allowed_assets: pol.allowed_assets,
+      allowed_venues: pol.allowed_venues,
+      is_paused: pol.is_paused,
+      stale_order_timeout_seconds: pol.stale_order_timeout_seconds,
     },
   };
 }
@@ -76,12 +83,10 @@ export function buildJevStatePayload(
  * Computes a deterministic hash of the state for caching and audit trail.
  */
 export function hashStatePayload(payload: JevStatePayload): string {
-  const json = JSON.stringify(payload);
-  let hash = 0;
-  for (let i = 0; i < json.length; i++) {
-    const char = json.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash |= 0;
-  }
-  return 'st_' + Math.abs(hash).toString(16).padStart(8, '0');
+  const canonicalize = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(canonicalize);
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([key, val]) => [key, canonicalize(val)]));
+    return value;
+  };
+  return 'st_' + keccak256(stringToHex(JSON.stringify(canonicalize(payload)))).slice(2);
 }

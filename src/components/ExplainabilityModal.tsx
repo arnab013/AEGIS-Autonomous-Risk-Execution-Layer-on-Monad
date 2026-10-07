@@ -54,8 +54,8 @@ export const ExplainabilityModal: React.FC<ExplainabilityModalProps> = ({
             <div className="text-[10px] text-[#64748b] uppercase">Deterministic Signals & Market Inputs</div>
             <div className="space-y-1.5 text-white">
               <div className="flex justify-between">
-                <span className="text-[#94a3b8]">Volatility Percentile:</span>
-                <span className="font-bold">{factors.volatility_percentile}th</span>
+                <span className="text-[#94a3b8]">Volatility Stress Index:</span>
+                <span className="font-bold">{factors.volatility_percentile} / 100</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-[#94a3b8]">Sell-Side Orderbook Imbalance:</span>
@@ -69,7 +69,7 @@ export const ExplainabilityModal: React.FC<ExplainabilityModalProps> = ({
           </div>
 
           <div className="bg-[#141822] p-3 rounded border border-[#1e2433] space-y-2">
-            <div className="text-[10px] text-[#64748b] uppercase">Jev Probabilistic Judgement</div>
+            <div className="text-[10px] text-[#64748b] uppercase">{auditEvent.decision_source === 'simulated' ? 'Heuristic replay probabilities' : 'Decision probabilities'}</div>
             <div className="space-y-1.5 text-white">
               <div className="flex justify-between">
                 <span className="text-[#94a3b8]">P({selected_action}):</span>
@@ -84,7 +84,7 @@ export const ExplainabilityModal: React.FC<ExplainabilityModalProps> = ({
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[#94a3b8]">Entropy Confidence Score:</span>
+                <span className="text-[#94a3b8]">Application Confidence Score:</span>
                 <span className="font-bold text-emerald-400">
                   {(auditEvent.confidence * 100).toFixed(0)}%
                 </span>
@@ -119,10 +119,10 @@ export const ExplainabilityModal: React.FC<ExplainabilityModalProps> = ({
               : 'bg-rose-950/30 border-rose-500/40 text-rose-300'
           }`}>
             <span className="font-bold block uppercase tracking-wider">
-              {execution_allowed ? 'VERDICT: SAFE TO EXECUTE ON MONAD' : 'VERDICT: BLOCKED BY RISK GATE'}
+              {execution_allowed ? 'VERDICT: LOCAL POLICY CHECKS PASSED' : 'VERDICT: BLOCKED BY RISK GATE'}
             </span>
             <span className="text-[11px] text-[#cbd5e1] block mt-1">
-              State Hash: <span className="text-white">{auditEvent.market_state_hash}</span>
+              {auditEvent.execution_mode === 'paper' ? 'Paper execution only.' : 'Wallet execution requires a fresh trade review.'} State Hash: <span className="text-white" style={{ overflowWrap: 'anywhere' }}>{auditEvent.market_state_hash}</span>
             </span>
           </div>
         </div>

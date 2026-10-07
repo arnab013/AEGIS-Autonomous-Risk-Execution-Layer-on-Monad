@@ -1,178 +1,93 @@
-# ⚡ AEGIS // Autonomous Risk & Execution Layer on Monad
+# Aegis
 
-> **A Real-Time Probabilistic Policy & Deterministic Risk Engine for Autonomous Onchain Finance**
+A probabilistic risk copilot for MON/USDC trading on Monad. Aegis combines real Kuru market data, editable trading limits, bounded Jev decisions, and a wallet-reviewed protective MON sale.
 
-Built for the **Monad Metropolis Hackathon** (Track: *Onchain Finance & Trading*).
+The product answers a practical question: **does the current evidence justify changing exposure, and does the proposed action satisfy my mandate?** The model proposes; deterministic code checks; the user controls signing.
 
----
+## What works and what remains
 
-## What It Is
-**Aegis** is an autonomous financial control layer that combines:
-1. **Monad Execution**: High-throughput EVM L1 with ~300ms block finality.
-2. **TypeSafe AI (Jev)**: "System One" fast typed decision model making bounded probabilistic inferences over market regimes, risk tiers, and strategy proposals.
-3. **Deterministic Hard Risk Gate**: Non-negotiable code rules that even an AI hallucination cannot bypass.
-4. **Kuru CLOB**: Onchain spot Central Limit Order Book for MON/USDC trading, depth analysis, and atomic batch order cancellations.
-5. **Perpl Perpetuals**: Dynamic short delta hedging protecting spot MON exposure without panicking out of spot holdings.
-6. **Envio HyperSync**: Microsecond onchain indexing providing a real-time, tamper-proof decision audit stream.
-7. **PolicyGuard Contract**: Compact, auditable Solidity guardrail restricting automated transactions on Monad.
+| Capability | Current status |
+| --- | --- |
+| Kuru / Monad market reads | Real contract reads: pinned block, market parameters, packed CLOB and reconstructed AMM depth. Mainnet two-sided reads verified during development. |
+| Live wallet balances | MON and USDC read from chain for a connected account. |
+| Protective native MON sale | Real mainnet calldata simulation and gas estimation succeeded using a funded public account. Minimum output, wallet submission and receipt tracking implemented; no transaction has been signed in this session. |
+| Jev | Official System One request/response integration through a server proxy. Paid inference disabled by default; live model proof pending authorization. |
+| Replay | Five synthetic scenarios, deterministic heuristic probabilities and book-based paper fills. No fabricated transaction hashes. |
+| Risk checks | Input validity, mandate, position, liquidity, slippage and other constraints; oversized proposals can be rejected before execution. |
+| Audit | Project-local JSONL journal with a SHA-256 hash chain and visible decision evidence. It is not Envio indexing or an onchain attestation. |
+| Perpl / MetaMask Agent Wallet | Not integrated. Live hedging and delegated autonomy unavailable. |
+| PolicyGuard | Compiled and exercised in a local EVM; separate from the wallet path. No Monad deployment or security audit is claimed. |
 
----
+Live operation observes mainnet by default. Switching to testnet uses the documented testnet market, which lacked bids during development and is rejected when it is not a valid two-sided market. Data availability changes: the runtime checks the current book rather than inventing liquidity.
 
-## Why These Technologies?
+## Run locally on Windows
 
-### Why Monad?
-Traditional blockchains with 2–12 second block times force AI agents into lagging offchain matching or risky asynchronous delays. Monad's **~300ms block time**, **parallel execution**, and **MonadBFT pipelined consensus** allow an autonomous agent to react to sudden orderbook shifts, adjust hedges, or purge stale orders before adverse selection strikes.
+Use **Node.js 22.14 or later**. TypeScript source is loaded by the server using Node's strip-types support.
 
-### Why Jev (TypeSafe AI)?
-Chatbots and generative LLMs are ill-suited for high-frequency financial execution—they suffer from high latency, prompt hallucinations, and unreliable arithmetic.
-**Jev** is a bounded "System One" decision model that outputs discrete probability distributions over typed categories:
-- **Action**: `[increase_position, reduce_position, hold, hedge, cancel_orders]`
-- **Regime**: `[trending_up, trending_down, range_bound, high_volatility, liquidity_stress, uncertain]`
-- **Risk**: `[very_low, low, moderate, high, critical]`
-- **Shannon Entropy Filtering**: If entropy is high ($H > 0.85$) or confidence is low, Aegis **abstains** and defaults to safe `hold`.
+All project writes must stay under `F:\Projects\Monad Metropolis`. In a PowerShell session:
 
-### Why Kuru?
-Kuru brings a fully onchain Central Limit Order Book to Monad. Aegis reads real-time bid/ask depth, calculates microsecond Order Book Imbalance (OBI), and executes limit orders with sub-second confirmation.
-
-### Why Perpl?
-Rather than simplistic "buy or sell" binary bots, institutional portfolios protect assets dynamically. When Jev detects downside volatility but the user's mandate requires maintaining spot MON exposure, Perpl opens a protective short perpetual hedge to neutralize net delta.
-
-### Why Envio?
-Decentralized autonomous agents require verifiable provenance. Envio **HyperSync** and **HyperRPC** index every decision state hash, Jev probability vector, risk gate check, and resulting Monad transaction hash into an auditable chronological stream.
-
----
-
-## Safety Architecture: AI Proposes, Code Constrains
-
-```
-┌─────────────────┐       ┌────────────────────┐       ┌──────────────────┐
-│  JEV POLICY     │       │   HARD RISK GATE   │       │  MONAD SETTLEMENT│
-│  Probabilistic  ├──────►│   Deterministic    ├──────►│  Kuru & Perpl    │
-│  Judgement      │       │   Safety Bounds    │       │  ~300ms Blocks   │
-└─────────────────┘       └─────────┬──────────┘       └──────────────────┘
-                                    │
-                              [If Violated]
-                                    ▼
-                          ┌────────────────────┐
-                          │  EXECUTION BLOCKED │
-                          │  Zero Onchain Tx   │
-                          │  Capital Protected │
-                          └────────────────────┘
-```
-
-### The Non-Negotiable Risk Invariants:
-1. **Emergency Pause Switch**: Instant circuit breaker (one-click in UI or auto-triggered).
-2. **Max Exposure Limit**: Cap on total portfolio spot exposure ($2,000 default).
-3. **Max Leverage Cap**: Strict leverage limit (2.0x default).
-4. **Max Daily Loss / Drawdown**: Shuts down new risk if daily loss exceeds limit ($400 default).
-5. **Liquidity Depth Check**: Requires minimum $1,500 depth within 25 bps to prevent slippage.
-6. **Order Stale Timeout**: Resting orders older than 60s are swept via batch cancel.
-7. **Trade Cooldown**: Enforces minimum interval between consecutive new-risk orders.
-
-> **CRITICAL PROOF (Scenario 5)**: When Jev proposes an aggressive buy order that would push exposure from $1,950 to $2,200 (violating the $2,000 cap), the **Hard Risk Gate forcefully blocks execution**. Zero transactions are submitted to Monad, proving the safety layer is real.
-
----
-
-## 5 Interactive Demo Scenarios
-
-| Scenario | Market Conditions | Jev Intelligence | Risk Gate / Action Taken |
-| :--- | :--- | :--- | :--- |
-| **1. Steady Market** | Balanced book, 4 bps spread | Range-bound regime (74%), Low risk | **HOLD** — Zero unnecessary fees |
-| **2. Bullish Momentum** | Heavy buy flow, +0.68 OBI | Trending Up (72%), Low risk | **INCREASE** — Kuru spot buy executed |
-| **3. Volatility Shock** | Sell cascade, spread blows to 28 bps | High Volatility (82%), Cancel prob 88% | **CANCEL** — Atomic batch cancel of 3 stale Kuru orders |
-| **4. Downside Turbulence** | Downside pressure, high spot exposure | High Risk (84%), Hedge prob 72% | **HEDGE** — Perpl short hedge opened, net delta neutralized |
-| **5. Safety Invariant Test** | Bullish momentum, near exposure cap | Increase proposed (74%) | **BLOCKED** — Invariant violation caught, 0 tx submitted |
-
----
-
-## Getting Started
-
-### Prerequisites
-- Node.js v20+ / v22+
-- npm or pnpm
-
-### Strict Filesystem Isolation (No C: Drive Writes)
-If operating on Windows where C: drive storage is restricted, execute:
 ```powershell
+Set-Location 'F:\Projects\Monad Metropolis'
 . .\scripts\setup_env.ps1
-```
-All caches, temp files, and toolchains are redirected strictly to `F:\Projects\Monad Metropolis\.local\`.
-
-### Installation
-```bash
-npm install
-```
-
-### Run Automated Test Suite
-```bash
-npm test
-```
-Runs 15 automated test cases verifying the Hard Risk Gate, Jev probability normalization, entropy calculations, and all 5 Replay Scenarios.
-
-### Launch Trading Terminal UI
-```bash
+npm ci
+if (!(Test-Path -LiteralPath '.env')) { Copy-Item -LiteralPath '.env.example' -Destination '.env' }
 npm run dev
 ```
-Open [http://localhost:3000](http://localhost:3000) to view the terminal.
 
----
+Existing dependencies can be reused; installation is unnecessary when `node_modules` matches the lockfile. Never overwrite an existing `.env`. Open [localhost:3000](http://localhost:3000). Development starts Vite on 3000 and the API on 3001.
 
-## Project Structure
-```
-├── contracts/
-│   └── PolicyGuard.sol        # Onchain risk & permission guard for Monad
-├── src/
-│   ├── components/            # Trading terminal UI components
-│   │   ├── Header.tsx         # Monad telemetry & circuit breaker
-│   │   ├── MarketPanel.tsx    # Kuru CLOB visualizer & depth ladder
-│   │   ├── PortfolioPanel.tsx # Exposure, net delta & active orders
-│   │   ├── JevPolicyPanel.tsx # Jev bounded probabilities & risk checks
-│   │   ├── ExplainabilityModal.tsx # Structured factor evidence
-│   │   ├── AuditTrailPanel.tsx # Envio HyperSync decision stream
-│   │   └── ReplayControlBar.tsx # 5 demo scenarios controller
-│   ├── engine/
-│   │   ├── marketMath.ts      # Deterministic HF analytics (spread, OBI, vol)
-│   │   ├── riskGate.ts        # Non-negotiable deterministic Hard Risk Gate
-│   │   └── stateEngine.ts     # Two-speed execution orchestrator
-│   ├── execution/
-│   │   ├── monadClient.ts     # Viem client for Monad Testnet (Chain ID 10143)
-│   │   ├── kuruClient.ts      # Kuru CLOB router & batch order cancellation
-│   │   ├── perplClient.ts     # Perpl DEX dynamic short hedging client
-│   │   └── envioIndexer.ts    # Envio HyperSync audit trail indexer
-│   ├── jev/
-│   │   ├── client.ts          # TypeSafe AI Jev decision client
-│   │   ├── confidence.ts      # Shannon entropy & uncertainty metrics
-│   │   ├── stateBuilder.ts    # Compact structured state builder
-│   │   └── policyEngine.ts    # High-level probabilistic policy coordinator
-│   ├── data/
-│   │   └── scenarios.ts       # 5 deterministic market replay scenarios
-│   ├── types/
-│   │   └── index.ts           # Shared TypeScript interfaces & schemas
-│   ├── App.tsx                # Terminal layout & reactive state
-│   ├── index.css              # Dark-mode high-contrast trading styling
-│   └── main.tsx               # Root entrypoint
-├── tests/
-│   ├── riskGate.test.ts       # Safety invariants unit tests
-│   ├── jevClient.test.ts      # Probability & entropy unit tests
-│   └── stateEngine.test.ts    # End-to-end replay scenario tests
-├── docs/                      # Architectural & hackathon documentation
-└── scripts/
-    └── setup_env.ps1          # C-drive storage isolation guard
+```powershell
+npm run setup:contracts
+npm test
+npm run build
+npm start
 ```
 
----
+Production startup serves the built app and API together on localhost:3000. `npm run preview` serves only the frontend and does not supply the API.
 
-## Submission Checklist
-- [x] Strict C: drive isolation verified and enforced
-- [x] Deterministic market analytics engine implemented
-- [x] Jev bounded probability models and entropy filtering implemented
-- [x] Deterministic Hard Risk Gate enforcing 8 non-negotiable invariants
-- [x] Scenario 5 verification: AI policy breach is forcefully BLOCKED
-- [x] Monad Testnet RPC & viem client integrated (Chain ID 10143)
-- [x] Kuru spot CLOB & atomic batch cancellation integrated
-- [x] Perpl dynamic perpetual hedging integrated
-- [x] Envio HyperSync audit trail indexing integrated
-- [x] Onchain `PolicyGuard.sol` smart contract implemented
-- [x] 5 complete deterministic replay scenarios with narration script
-- [x] Polished dark financial trading terminal UI
-- [x] Zero private keys or credentials committed to source control
+Development verification on 8 October: **128 tests passed**, TypeScript/Vite build passed, and browser checks covered replay, a blocked oversized proposal, decision evidence, live onchain reads, inspection without paid inference and mobile overflow. Contract tests used compiled Solidity 0.8.30 in a local EVM. These checks do not establish a signed mainnet trade or a live paid Jev response.
+
+The storage script redirects command caches, temporary paths and user configuration into `.local`. Existing browser storage is outside this shell's control; do not download browsers or save project exports to C:. See [storage policy](docs/local_storage_policy.md).
+
+## Configuration
+
+`.env` is server-only and ignored by Git:
+
+```dotenv
+AEGIS_NETWORK=mainnet
+TYPESAFE_API_KEY=
+JEV_ENABLE_LIVE=false
+```
+
+Set `AEGIS_NETWORK=testnet` to target chain 10143 instead of mainnet 143. Restart the API after a configuration change. No private key or seed phrase is needed.
+
+After approving TypeSafe API-credit usage, set `JEV_ENABLE_LIVE=true` and provide `TYPESAFE_API_KEY`. The browser sends state to `/api/jev`; the server pins `jev-latest` and owns the official questions and authorization header. Never use a `VITE_` prefix for secrets.
+
+## Use the product
+
+Start in **Replay Lab**. Choose a scenario and press **Step** or **Play**. Scenario 5 shows a bullish proposal blocked near the position cap. Scenario 4 demonstrates a hedge proposal blocked by the default slippage limit; changing the mandate can permit only a paper hedge. Model output in replay is explicitly heuristic.
+
+In **Live**, inspect current Kuru data and wallet balances. With paid inference disabled, the decision source remains unavailable/fallback. A user can explicitly prepare a protective MON reduction; the UI checks policy and the server simulates the exact Kuru market call. The proposal shows amount, estimated/minimum USDC output, market address, slippage and expiry. Only **Confirm in wallet** requests a transaction.
+
+Market minimum size and precision come from the contract. Mainnet's observed minimum was approximately 200 MON during development; the UI reports the current value. Choose a clip within your order cap, available inventory and liquidity limits, and retain MON for gas. Preparation may legitimately fail.
+
+Historical PnL, resting Kuru orders and perpetual positions are not indexed in live mode. New-risk autonomous execution remains unavailable. A successful receipt is recorded separately from submission, and balances refresh from chain.
+
+## Product and submission evidence
+
+This retains the useful terminal and risk concept while replacing simulated integration claims with a narrow real execution path. Real read-only simulation is verified; the configured TypeSafe key remains behind disabled paid inference. Public GitHub publication, public deployment, an authorized Jev response, a real approved Kuru transaction and a public demo still need evidence.
+
+The [official competition rules](https://hackathon.monad.xyz/api/v1/policies/current) require public GitHub source under an open-source license, build-window commit history, AI-tool disclosure, Monad integration and a demo of at most 3 minutes. Deadline: **14 October 2026, 05:59 CEST in Paris**. Full sponsor qualification remains pending authenticated platform review.
+
+**Build provenance:** the pre-existing foundation supplied with this project included the React terminal, scenario fixtures, market/risk engine interfaces and placeholder integration clients. Current work adds real Kuru contract reads and reviewed execution, server-only Jev transport/validation, explicit paper accounting, stronger policy checks and honest provenance labels. The original foundation predates this development session; preserve and disclose its actual commit dates before submission.
+
+**AI-tool disclosure:** OpenAI Codex assisted with research, implementation, tests and documentation. External React, Vite, TypeScript, viem, Vitest and supporting libraries retain their own licenses; see `package.json` and `package-lock.json`.
+
+## Documentation
+
+- [MVP assessment](docs/mvp_assessment.md): product choice, competitive strengths and remaining work.
+- [Architecture](docs/architecture.md), [risk model](docs/risk_model.md), [Jev design](docs/jev_design.md).
+- [Demo script](docs/demo_script.md), [deployment](docs/deployment.md), [requirements](docs/hackathon_requirements.md), [submission](docs/submission.md).
+- [Local storage policy](docs/local_storage_policy.md), [verification report](docs/verification.md).
+
+Aegis code is released under the [MIT license](LICENSE). There is no profitability claim, production security audit or verified autonomous-trading guarantee.

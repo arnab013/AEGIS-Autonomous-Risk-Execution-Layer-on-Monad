@@ -81,10 +81,11 @@ describe('HardRiskGate Safety Invariant Suite', () => {
   });
 
   it('BLOCKS transaction when leverage exceeds max_leverage', () => {
-    // Collateral $500, prospective exposure $1,500 -> Leverage 3.0x > 2.0x limit
+    // Total equity $1,750, prospective exposure $1,500 exceeds a 0.8x cap.
     basePosition.spot_exposure_usd = 1250;
     basePosition.usdc_balance = 500;
     basePosition.unrealized_pnl = 0;
+    defaultPolicy.max_leverage = 0.8;
 
     const result = riskGate.evaluateAction('increase_position', defaultPolicy, basePosition, baseMarket, baseOrders, 250);
 
@@ -142,5 +143,78 @@ describe('HardRiskGate Safety Invariant Suite', () => {
     expect(result.allowed).toBe(true);
     expect(result.violations.length).toBe(0);
     expect(result.sanitized_action).toBe('increase_position');
+  });
+
+  it.each([NaN, Infinity, -1, 0])('fails closed on invalid order amount %s', (amount) => {
+    expect(riskGate.evaluateAction('increase_position', defaultPolicy, basePosition, baseMarket, baseOrders, amount).allowed).toBe(false);
+  });
+
+  it('reserves pending buy exposure so concurrent orders cannot evade the position cap', () => {
+    baseOrders.open_orders = [{ id: 'pending', side: 'buy', price: 4, size: 150, venue: 'kuru', status: 'open', age_seconds: 0, distance_from_mid_bps: 0 }];
+    expect(riskGate.evaluateAction('increase_position', defaultPolicy, basePosition, baseMarket, baseOrders, 250).checks.max_position_usd.passed).toBe(false);
+  });
+
+  it('rejects new orders when open-order count already equals the cap', () => {
+    defaultPolicy.max_open_orders = 0;
+    expect(riskGate.evaluateAction('increase_position', defaultPolicy, basePosition, baseMarket, baseOrders, 250).checks.max_open_orders.passed).toBe(false);
+  });
+
+  it('checks gross leverage for hedges, even though a short reduces net delta', () => {
+    defaultPolicy.max_leverage = 0.5;
+    const result = riskGate.evaluateAction('hedge', defaultPolicy, basePosition, baseMarket, baseOrders, 250);
+    expect(result.allowed).toBe(false);
+    expect(result.checks.max_leverage.passed).toBe(false);
+  });
+
+  it('prevents over-hedging into a net short', () => {
+    basePosition.net_delta = 100;
+    expect(riskGate.evaluateAction('hedge', defaultPolicy, basePosition, baseMarket, baseOrders, 250).checks.hedge_reduces_delta.passed).toBe(false);
+  });
+
+  it('enforces allowed assets and venues', () => {
+    defaultPolicy.allowed_assets = ['MON'];
+    defaultPolicy.allowed_venues = ['perpl'];
+    const result = riskGate.evaluateAction('increase_position', defaultPolicy, basePosition, baseMarket, baseOrders);
+    expect(result.allowed).toBe(false);
+    expect(result.checks.allowed_assets.passed).toBe(false);
+    expect(result.checks.allowed_venue.passed).toBe(false);
+  });
+
+  it('checks actual multi-level book impact instead of ignoring max_slippage_bps', () => {
+    baseMarket.asks = [{ price: 4.001, size: 1 }, { price: 4.2, size: 1000 }];
+    const result = riskGate.evaluateAction('increase_position', defaultPolicy, basePosition, baseMarket, baseOrders);
+    expect(result.checks.max_slippage_bps.passed).toBe(false);
+    expect(result.allowed).toBe(false);
+  });
+
+  it('blocks stale or crossed market data', () => {
+    baseMarket.timestamp = Date.now() - 20_000;
+    expect(riskGate.evaluateAction('increase_position', defaultPolicy, basePosition, baseMarket, baseOrders).checks.market_freshness.passed).toBe(false);
+    baseMarket.timestamp = Date.now();
+    baseMarket.bids = [{ price: 5, size: 1000 }];
+    expect(riskGate.evaluateAction('increase_position', defaultPolicy, basePosition, baseMarket, baseOrders).checks.market_freshness.passed).toBe(false);
+  });
+
+  it('rejects purchases with insufficient unreserved cash', () => {
+    basePosition.usdc_balance = 200;
+    expect(riskGate.evaluateAction('increase_position', defaultPolicy, basePosition, baseMarket, baseOrders).checks.cash_available.passed).toBe(false);
+  });
+
+  it('permits emergency risk reduction and cancellation during pause', () => {
+    defaultPolicy.is_paused = true;
+    expect(riskGate.evaluateAction('reduce_position', defaultPolicy, basePosition, baseMarket, baseOrders).allowed).toBe(true);
+    expect(riskGate.evaluateAction('cancel_orders', defaultPolicy, basePosition, baseMarket, baseOrders).allowed).toBe(true);
+    expect(riskGate.evaluateAction('hedge', defaultPolicy, basePosition, baseMarket, baseOrders).allowed).toBe(false);
+  });
+
+  it('can use an injected deterministic clock including epoch zero for cooldown', () => {
+    let now = 0;
+    const deterministicGate = new HardRiskGate(() => now);
+    baseMarket.timestamp = 0;
+    deterministicGate.recordExecution();
+    expect(deterministicGate.evaluateAction('increase_position', defaultPolicy, basePosition, baseMarket, baseOrders).allowed).toBe(false);
+    now = 2000;
+    baseMarket.timestamp = now;
+    expect(deterministicGate.evaluateAction('increase_position', defaultPolicy, basePosition, baseMarket, baseOrders).allowed).toBe(true);
   });
 });

@@ -1,47 +1,47 @@
-# Local Storage & C-Drive Isolation Policy
+# Project-local storage policy
 
-## Invariant
-**Strict No C: Drive Write Rule**: The Windows `C:` drive has critical storage constraints. Under no circumstances should any dependency, cache, temporary file, compiler, downloaded model, log, or build artifact be written to `C:\`.
+The user's instruction is strict: all intentional project writes, generated files, caches and tool state must remain inside `F:\Projects\Monad Metropolis`. Reading existing files on C: is allowed. This policy does not authorize deleting or moving unrelated files.
 
-All project data, dependencies, builds, artifacts, and caches **MUST** strictly reside within `PROJECT_ROOT` (`F:\Projects\Monad Metropolis`).
+Before running project commands, dot-source the provided environment script in the same PowerShell session:
 
----
+~~~powershell
+Set-Location 'F:\Projects\Monad Metropolis'
+. .\scripts\setup_env.ps1
+$env:TEMP
+$env:npm_config_cache
+$env:USERPROFILE
+npm config get cache
+~~~
 
-## Directory Layout in `PROJECT_ROOT/.local`
+Each displayed write path must resolve inside the project. The script derives the root from its own location and rejects a C: project root. It creates project-local storage directories and sets process environment variables. It does not change the machine's permanent configuration, HOME or CODEX_HOME.
 
-| Path | Redirected Purpose | Environment Variable(s) |
-| :--- | :--- | :--- |
-| `.local/tmp/` | Operating system temporary directory | `TEMP`, `TMP`, `TMPDIR` |
-| `.local/cache/` | XDG generic user cache | `XDG_CACHE_HOME` |
-| `.local/home/` | Emulated user profile / dotfiles | `HOME`, `USERPROFILE`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME` |
-| `.local/logs/` | Project operational and execution logs | - |
-| `.local/downloads/` | Programmatic downloads | - |
-| `.local/npm-cache/` | Node Package Manager cache | `npm_config_cache`, `NPM_CONFIG_CACHE` |
-| `.local/pnpm-store/` | PNPM package store | `PNPM_HOME` |
-| `.local/yarn-cache/` | Yarn dependency cache | `YARN_CACHE_FOLDER` |
-| `.local/python/pip-cache/` | Python PIP cache | `PIP_CACHE_DIR` |
-| `.local/python/pycache/` | Python compiled bytecode (`.pyc`) | `PYTHONPYCACHEPREFIX` |
-| `.local/huggingface/` | AI/ML models & tokenizer cache | `HF_HOME`, `HUGGINGFACE_HUB_CACHE`, `TRANSFORMERS_CACHE` |
-| `.local/torch/` | PyTorch cache | `TORCH_HOME` |
-| `.local/cuda-cache/` | Nvidia CUDA compilation cache | `CUDA_CACHE_PATH` |
-| `.local/playwright/` | Browser binaries | `PLAYWRIGHT_BROWSERS_PATH` |
-| `.local/rust/` | Rust / Cargo home | `CARGO_HOME`, `RUSTUP_HOME` |
-| `.local/foundry/` | Solidity / Foundry binaries and cache | `FOUNDRY_DIR` |
+## Redirected paths
 
----
+| Tool or purpose | Project destination |
+| --- | --- |
+| TEMP, TMP, TMPDIR | .local/tmp |
+| XDG cache/config/data and user profile | .local/cache and .local/home |
+| APPDATA / LOCALAPPDATA | .local/home/AppData |
+| npm, Yarn, Corepack, pnpm | .local/npm-cache, yarn-cache, node/corepack, pnpm-store |
+| Python bytecode, pip, model libraries | .local/python and named model/cache directories |
+| Cargo/Rust, Go, Gradle, Foundry | Named directories under .local |
+| Playwright browser downloads | .local/playwright; automatic browser download disabled |
+| Jupyter configuration and runtime | .local/jupyter |
 
-## Execution Guardrails
+These redirects are preparation, not proof that an arbitrary tool honors them. Check a new tool's documented storage behavior before invoking it. The existing app launchers also set core temporary/cache paths for their child processes.
 
-1. **Before Running Any Command**:
-   Source the environment configuration in PowerShell:
-   ```powershell
-   . .\scripts\setup_env.ps1
-   ```
-2. **Node / NPM**:
-   - Always run `npm` with `--cache "F:\Projects\Monad Metropolis\.local\npm-cache"`.
-   - Never install global modules (`npm i -g`).
-3. **Python**:
-   - Always use a project-local virtual environment located at `F:\Projects\Monad Metropolis\.venv`.
-   - Always pass `--cache-dir "F:\Projects\Monad Metropolis\.local\python\pip-cache"` or `--no-cache-dir`.
-4. **Git**:
-   - All `.local/`, `.venv/`, `node_modules/`, and temporary build artifacts are ignored by `.gitignore`.
+Source dependencies belong in node_modules, compiled frontend output in dist, and logs/verification artifacts under .local. The API journal and exports are under .local/artifacts/audit. Journal rotation occurs after the active file exceeds 5 MiB. Dependencies, dist, .local and .env are ignored by Git.
+
+## Secrets and external applications
+
+Preserve an existing .env; never overwrite it with the example. Keep TypeSafe keys server-only. Do not print secrets or place them in screenshots, browser bundles, exported evidence or commit history. The wallet path needs no private key or seed phrase.
+
+An already-running browser has its own profile outside this shell's environment. Do not initiate browser installation or create a new profile until its storage path is verified on F:. The application exports through its server to the project artifact directory, avoiding the browser's default Downloads directory. If manually saving screenshots or videos, explicitly select a path under this project.
+
+Optional MetaMask Agent Wallet, blockchain compilers, ML tools and similar runtimes may default to user-profile storage. They are not needed to run this MVP. Verify all config, plugin, state and cache locations before enabling them. A configured variable alone does not establish where a tool actually writes.
+
+## Verification and cleanup
+
+Before an install or generation command, check its output and cache locations, then keep artifacts under a named .local subdirectory. Do not repurpose common system variables as temporary script variables or modify global cache/config settings.
+
+Cleanup is limited to known disposable project directories. Resolve every deletion or move target to an absolute path and verify it remains inside the intended F: workspace before any recursive operation. Preserve source, the existing environment file, evidence and journal records needed for submission.

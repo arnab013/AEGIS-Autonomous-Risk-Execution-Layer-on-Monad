@@ -8,7 +8,8 @@ interface HeaderProps {
   onTogglePause: () => void;
   operationMode: 'replay' | 'live';
   onToggleMode: (mode: 'replay' | 'live') => void;
-  rpcLatencyMs: number;
+  rpcLatencyMs: number | null;
+  chainId?: number;
   blockNumber: string;
   walletAddress?: string | null;
   walletBalanceMon?: string | null;
@@ -24,6 +25,7 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleMode,
   rpcLatencyMs,
   blockNumber,
+  chainId = 10143,
   walletAddress,
   walletBalanceMon,
   isConnectingWallet,
@@ -31,7 +33,7 @@ export const Header: React.FC<HeaderProps> = ({
   onDisconnectWallet,
 }) => {
   return (
-    <header className="border-b border-[#1c212c] bg-[#0c0e14] px-4 py-2.5 flex items-center justify-between">
+    <header className="app-header border-b border-[#1c212c] bg-[#0c0e14] px-4 py-2.5 flex items-center justify-between">
       {/* Brand & Track */}
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2">
@@ -45,7 +47,7 @@ export const Header: React.FC<HeaderProps> = ({
                 Monad Onchain Finance
               </span>
             </div>
-            <p className="text-[11px] text-[#64748b]">Autonomous Risk & Execution Layer</p>
+            <p className="text-[11px] text-[#64748b]">Policy & risk terminal</p>
           </div>
         </div>
 
@@ -58,14 +60,14 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
-            <span>Monad Testnet (10143)</span>
+            <span>Monad {chainId === 143 ? 'Mainnet' : 'Testnet'} ({chainId})</span>
           </div>
           <div className="flex items-center gap-1">
             <Activity className="w-3.5 h-3.5 text-[#64748b]" />
-            <span>Block: #{blockNumber}</span>
+            <span>Last block: #{blockNumber}</span>
           </div>
           <div className="text-[11px] text-[#64748b]">
-            Latency: <span className="text-emerald-400">{rpcLatencyMs}ms</span> (~300ms block)
+            Data: <span className="text-emerald-400">{rpcLatencyMs === null ? 'Unavailable' : `${rpcLatencyMs}ms`}</span>
           </div>
         </div>
       </div>
@@ -92,7 +94,7 @@ export const Header: React.FC<HeaderProps> = ({
                 : 'text-[#64748b] hover:text-[#94a3b8]'
             }`}
           >
-            Monad Live
+            Live Market
           </button>
         </div>
 

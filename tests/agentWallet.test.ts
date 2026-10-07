@@ -1,119 +1,23 @@
-import { describe, it, expect } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { AgentWalletManager } from '../src/execution/agentWallet.ts';
-
-describe('MetaMask Agent Wallet Scoped Delegation', () => {
-  it('initializes with default session permissions', () => {
-    const manager = new AgentWalletManager({
-      userAddress: '0x1234567890abcdef1234567890abcdef12345678',
-      agentAddress: '0xabcdef1234567890abcdef1234567890abcdef12',
-      maxNotionalSpendUsd: 10000,
-      maxSpendPerTxUsd: 2000,
-    });
-
-    const session = manager.getSession();
-    expect(session).not.toBeNull();
-    expect(session?.isValid).toBe(true);
-    expect(session?.maxNotionalSpendUsd).toBe(10000);
-    expect(session?.maxSpendPerTxUsd).toBe(2000);
-  });
-
-  it('validates allowed transaction within limits', () => {
-    const manager = new AgentWalletManager({
-      allowedVenues: ['kuru_router', 'perpl_perp'],
-      maxNotionalSpendUsd: 10000,
-      maxSpendPerTxUsd: 2000,
-    });
-
-    const result = manager.validateDelegatedTx({
-      targetVenue: 'kuru_router',
-      amountUsd: 1500,
-      action: 'place_order',
-    });
-
-    expect(result.allowed).toBe(true);
-    expect(result.remainingAllowanceUsd).toBe(8500);
-  });
-
-  it('blocks transaction exceeding per-transaction cap', () => {
-    const manager = new AgentWalletManager({
-      allowedVenues: ['kuru_router'],
-      maxNotionalSpendUsd: 10000,
-      maxSpendPerTxUsd: 2000,
-    });
-
-    const result = manager.validateDelegatedTx({
-      targetVenue: 'kuru_router',
-      amountUsd: 2500,
-      action: 'place_order',
-    });
-
-    expect(result.allowed).toBe(false);
-    expect(result.reason).toContain('exceeds per-transaction limit');
-  });
-
-  it('blocks transaction targeting non-whitelisted venue', () => {
-    const manager = new AgentWalletManager({
-      allowedVenues: ['kuru_router'],
-      maxNotionalSpendUsd: 10000,
-      maxSpendPerTxUsd: 2000,
-    });
-
-    const result = manager.validateDelegatedTx({
-      targetVenue: 'unauthorized_dex',
-      amountUsd: 500,
-      action: 'swap',
-    });
-
-    expect(result.allowed).toBe(false);
-    expect(result.reason).toContain('not in whitelisted session permissions');
-  });
-
-  it('blocks transaction when user revokes session', () => {
-    const manager = new AgentWalletManager();
-    manager.revokeSession();
-
-    const result = manager.validateDelegatedTx({
-      targetVenue: 'kuru_router',
-      amountUsd: 100,
-      action: 'place_order',
-    });
-
-    expect(result.allowed).toBe(false);
-    expect(result.reason).toContain('revoked');
-  });
-
-  it('blocks transaction exceeding daily spend limit', () => {
-    const manager = new AgentWalletManager({
-      allowedVenues: ['kuru_router'],
-      maxNotionalSpendUsd: 20000,
-      dailyLimitUsd: 3000,
-      maxSpendPerTxUsd: 2000,
-    });
-
-    manager.recordExecution(1800);
-
-    const result = manager.validateDelegatedTx({
-      targetVenue: 'kuru_router',
-      amountUsd: 1500, // 1800 + 1500 = 3300 > 3000
-      action: 'place_order',
-    });
-
-    expect(result.allowed).toBe(false);
-    expect(result.reason).toContain('exceed daily limit');
-  });
-
-  it('blocks transaction after session expiry timestamp', () => {
-    const manager = new AgentWalletManager({
-      expiresAt: Date.now() - 1000, // expired 1s ago
-    });
-
-    const result = manager.validateDelegatedTx({
-      targetVenue: 'kuru_router',
-      amountUsd: 100,
-      action: 'place_order',
-    });
-
-    expect(result.allowed).toBe(false);
-    expect(result.reason).toContain('expired');
-  });
+import type { SessionPermissions } from '../src/execution/agentWallet.ts';
+const USER = '0x1111111111111111111111111111111111111111';
+const AGENT = '0x2222222222222222222222222222222222222222';
+const request = (amountUsd = 500) => ({ targetVenue: 'kuru', amountUsd, action: 'sell' });
+function mandate(extra: Partial<SessionPermissions> = {}): SessionPermissions { return { userAddress: USER, agentAddress: AGENT, allowedVenues: ['kuru'], maxNotionalSpendUsd: 10000, maxSpendPerTxUsd: 2000, expiresAt: Date.now() + 3 * 86400000, dailyLimitUsd: 3000, cumulativeSpentUsd: 0, ...extra }; }
+describe('Local mandate accounting (does not grant wallet delegation)', () => {
+    beforeEach(() => vi.useFakeTimers({ now: new Date('2026-10-07T12:00:00Z') }));
+    afterEach(() => vi.useRealTimers());
+    it('fails closed until an explicit mandate is granted', () => { const manager = new AgentWalletManager(); expect(manager.getSession()).toBeNull(); expect(manager.validateDelegatedTx(request()).allowed).toBe(false); });
+    it('requires real addresses and finite nonnegative policy values', () => { expect(() => new AgentWalletManager({ maxNotionalSpendUsd: 1000 })).toThrow('explicit'); expect(() => new AgentWalletManager(mandate({ userAddress: '0xUser' }))).toThrow('address'); expect(() => new AgentWalletManager(mandate({ maxSpendPerTxUsd: NaN }))).toThrow('finite'); });
+    it('accepts a permitted transaction and returns remaining total budget', () => { const manager = new AgentWalletManager(mandate()); expect(manager.validateDelegatedTx(request(1500))).toEqual({ allowed: true, remainingAllowanceUsd: 8500 }); expect(manager.getSession()?.authorization).toBe('local_policy_only'); });
+    it.each([NaN, Infinity, -1, 0])('blocks invalid amounts (%s)', amount => { const manager = new AgentWalletManager(mandate()); expect(manager.validateDelegatedTx(request(amount)).allowed).toBe(false); expect(() => manager.recordExecution(amount)).toThrow(); });
+    it('blocks non-whitelisted venues and oversized transaction amounts', () => { const manager = new AgentWalletManager(mandate()); expect(manager.validateDelegatedTx({ ...request(), targetVenue: 'unknown' }).reason).toContain('whitelisted'); expect(manager.validateDelegatedTx(request(2500)).reason).toContain('per-transaction'); });
+    it('revocation and exact expiry block new proposals', () => { const manager = new AgentWalletManager(mandate({ expiresAt: Date.now() + 1000 })); vi.advanceTimersByTime(1000); expect(manager.getSession()?.isValid).toBe(false); expect(manager.validateDelegatedTx(request()).reason).toContain('expired'); manager.grantSession(mandate()); manager.revokeSession(); expect(manager.validateDelegatedTx(request()).reason).toContain('revoked'); });
+    it('reserves pending spend so concurrent proposals cannot exceed daily limit', () => { const manager = new AgentWalletManager(mandate()); const first = manager.reserveExecution(request(1800)); expect(manager.validateDelegatedTx(request(1500)).reason).toContain('daily'); manager.settleExecution(first, false); expect(manager.validateDelegatedTx(request(1500)).allowed).toBe(true); });
+    it('settles actual confirmations exactly once and releases failed submissions', () => { const manager = new AgentWalletManager(mandate()); const id = manager.reserveExecution(request(1800)); manager.settleExecution(id, true); expect(manager.getSession()?.cumulativeSpentUsd).toBe(1800); expect(manager.getSession()?.reservedUsd).toBe(0); expect(() => manager.settleExecution(id, true)).toThrow('already settled'); expect(manager.validateDelegatedTx(request(1500)).reason).toContain('daily'); });
+    it('records a confirmed pending transaction even after revocation', () => { const manager = new AgentWalletManager(mandate()); const id = manager.reserveExecution(request()); manager.revokeSession(); manager.settleExecution(id, true); expect(manager.getSession()?.cumulativeSpentUsd).toBe(500); expect(manager.validateDelegatedTx(request()).allowed).toBe(false); });
+    it('rolls the daily budget at UTC midnight while retaining lifetime spend', () => { const manager = new AgentWalletManager(mandate()); manager.recordExecution(1800); expect(manager.validateDelegatedTx(request(1500)).allowed).toBe(false); vi.advanceTimersByTime(13 * 3600000); expect(manager.validateDelegatedTx(request(1500)).allowed).toBe(true); expect(manager.getSession()?.cumulativeSpentUsd).toBe(1800); expect(manager.getSession()?.dailySpentUsd).toBe(0); });
+    it('never resets a pending reservation through mandate replacement', () => { const manager = new AgentWalletManager(mandate()); manager.reserveExecution(request()); expect(() => manager.grantSession(mandate())).toThrow('pending'); });
+    it('does not expose mutable venue whitelist arrays', () => { const manager = new AgentWalletManager(mandate()); manager.getSession()!.allowedVenues.push('attacker'); expect(manager.validateDelegatedTx({ ...request(), targetVenue: 'attacker' }).allowed).toBe(false); });
 });

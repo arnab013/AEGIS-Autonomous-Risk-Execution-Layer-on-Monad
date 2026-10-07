@@ -6,20 +6,21 @@ import { AuditEvent } from '../types/index.ts';
 
 interface AuditTrailPanelProps {
   events: AuditEvent[];
+  onExport?: () => void;
 }
 
-export const AuditTrailPanel: React.FC<AuditTrailPanelProps> = ({ events }) => {
+export const AuditTrailPanel: React.FC<AuditTrailPanelProps> = ({ events, onExport }) => {
   return (
     <div className="terminal-card flex flex-col h-full overflow-hidden">
       <div className="terminal-header flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Database className="w-4 h-4 text-[#7b3fe4]" />
           <span className="font-mono text-xs font-bold text-white tracking-wider">
-            ENVIO HYPERSYNC // REAL-TIME DECISION & AUDIT STREAM
+            DECISION JOURNAL // POLICY & EXECUTION EVIDENCE
           </span>
         </div>
         <span className="text-[11px] font-mono text-[#64748b]">
-          {events.length} RECORDED EVENTS
+          {events.length} EVENTS {onExport && <button onClick={onExport}>Save JSON to project</button>}
         </span>
       </div>
 
@@ -43,11 +44,11 @@ export const AuditTrailPanel: React.FC<AuditTrailPanelProps> = ({ events }) => {
                   {new Date(evt.timestamp).toLocaleTimeString()}
                 </td>
                 <td className="py-2 px-3 text-white font-semibold">
-                  {evt.market_state_hash}
+                  <span title={evt.market_state_hash}>{evt.market_state_hash.slice(0, 10)}…</span>
                 </td>
                 <td className="py-2 px-3">
                   <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-[#7b3fe4]/20 text-[#cbb2fe]">
-                    {evt.selected_action} ({(evt.confidence * 100).toFixed(0)}%)
+                    {evt.selected_action} ({(evt.confidence * 100).toFixed(0)}%) · {evt.user_initiated ? 'user' : evt.decision_source || 'policy'}
                   </span>
                 </td>
                 <td className="py-2 px-3 whitespace-nowrap">
@@ -62,17 +63,17 @@ export const AuditTrailPanel: React.FC<AuditTrailPanelProps> = ({ events }) => {
                   )}
                 </td>
                 <td className="py-2 px-3 uppercase text-[#94a3b8] font-semibold">
-                  {evt.venue || 'NONE'}
+                  {evt.venue || 'NONE'} · {evt.execution_mode || 'observe'}
                 </td>
                 <td className="py-2 px-3 whitespace-nowrap">
                   {evt.transaction_hash ? (
                     <a
-                      href={`https://testnet.monadvision.com/tx/${evt.transaction_hash}`}
+                      href={`https://${evt.chain_id === 143 ? '' : 'testnet.'}monadvision.com/tx/${evt.transaction_hash}`}
                       target="_blank"
                       rel="noreferrer"
                       className="text-[#a77df8] hover:underline flex items-center gap-1 font-semibold"
                     >
-                      <span>{evt.transaction_hash.slice(0, 6)}...{evt.transaction_hash.slice(-4)}</span>
+                      <span>{evt.transaction_hash.slice(0, 6)}...{evt.transaction_hash.slice(-4)} · {evt.transaction_status || 'submitted'}</span>
                       <ExternalLink className="w-3 h-3" />
                     </a>
                   ) : (

@@ -22,7 +22,7 @@ export const JevPolicyPanel: React.FC<JevPolicyPanelProps> = ({
   const isExecutionBlocked = !riskCheck.allowed;
 
   const actionLabels: Record<TradingAction, string> = {
-    hedge: 'Hedge (Perpl Short)',
+    hedge: 'Protective Hedge',
     reduce_position: 'Reduce Position',
     hold: 'Hold / Maintain',
     increase_position: 'Increase Position',
@@ -52,11 +52,12 @@ export const JevPolicyPanel: React.FC<JevPolicyPanelProps> = ({
       </div>
 
       <div className="p-3 space-y-3 flex-1 overflow-y-auto">
+        <div className="model-provenance"><strong>{(decision.origin || decision.source) === 'typesafe_jev' ? `Jev · ${decision.model}` : (decision.origin || decision.source) === 'simulated' ? 'Heuristic replay policy' : 'Safe fallback · no model inference'}</strong><span>{decision.latency_ms} ms measured · entropy {decision.entropy.toFixed(2)} · margin {decision.top_two_margin.toFixed(2)}</span><span>Decision snapshot: {new Date(auditEvent.timestamp).toLocaleTimeString()}</span>{decision.model_confidence !== undefined && <span>TypeSafe confidence: {(decision.model_confidence * 100).toFixed(0)}%</span>}{decision.error && <span>{decision.error}</span>}</div>
         {/* Action Probabilities Distribution */}
         <div className="bg-[#10131b] p-3 rounded border border-[#1a1f2c] space-y-2">
           <div className="flex justify-between items-center text-[10px] uppercase font-mono text-[#64748b]">
             <span>Action Probability Vector</span>
-            <span className="text-[#a77df8]">Top: {decision.selected_action}</span>
+            <span className="text-[#a77df8]">Selected: {decision.selected_action}</span>
           </div>
 
           <div className="space-y-1.5">
@@ -143,7 +144,7 @@ export const JevPolicyPanel: React.FC<JevPolicyPanelProps> = ({
               <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
             )}
             <span className="font-bold tracking-wide">
-              {isExecutionBlocked ? 'HARD RISK GATE: EXECUTION BLOCKED' : 'POLICY VERIFIED: EXECUTION PERMITTED'}
+              {isExecutionBlocked ? 'HARD RISK GATE: EXECUTION BLOCKED' : 'LOCAL POLICY CHECKS: PASSED'}
             </span>
           </div>
 
@@ -153,7 +154,7 @@ export const JevPolicyPanel: React.FC<JevPolicyPanelProps> = ({
 
           {/* Monad Transaction Link or Zero-Tx Proof */}
           <div className="pt-2 border-t border-white/10 flex items-center justify-between text-[11px]">
-            <span>Monad Settlement:</span>
+            <span>{auditEvent.execution_mode === 'paper' ? 'Paper execution:' : 'Monad transaction:'}</span>
             {lastTxHash ? (
               <a
                 href={`https://testnet.monadvision.com/tx/${lastTxHash}`}
@@ -165,7 +166,7 @@ export const JevPolicyPanel: React.FC<JevPolicyPanelProps> = ({
                 <ExternalLink className="w-3 h-3" />
               </a>
             ) : (
-              <span className="text-[#94a3b8]">0 TX SUBMITTED (Capital Protected)</span>
+              <span className="text-[#94a3b8]">{auditEvent.execution_mode === 'paper' ? 'Simulated · no chain transaction' : 'No transaction submitted'}</span>
             )}
           </div>
         </div>

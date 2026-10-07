@@ -1,14 +1,23 @@
 // src/components/MarketPanel.tsx - Live Orderbook & Market State Engine Display
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Layers } from './icons.tsx';
 import { MarketState } from '../types/index.ts';
 
 interface MarketPanelProps {
   market: MarketState;
+  live?: boolean;
 }
 
-export const MarketPanel: React.FC<MarketPanelProps> = ({ market }) => {
+export const MarketPanel: React.FC<MarketPanelProps> = ({ market, live = false }) => {
+  const [history, setHistory] = useState<{ time: number; price: number }[]>([]);
+  useEffect(() => {
+    setHistory(previous => previous.some(point => point.time === market.timestamp) ? previous : [...previous, { time: market.timestamp, price: market.mid_price }].slice(-60));
+  }, [market.timestamp, market.mid_price]);
+  const prices = history.map(point => point.price);
+  const low = Math.min(...prices), high = Math.max(...prices);
+  const range = Math.max(high - low, market.mid_price * 0.0001);
+  const line = prices.map((price, index) => `${12 + index * 296 / Math.max(prices.length - 1, 1)},${84 - (price - low) / range * 64}`).join(' ');
   const isPositiveImbalance = market.orderbook_imbalance >= 0;
   const imbalancePct = Math.min(100, Math.abs(market.orderbook_imbalance) * 100);
 
@@ -19,16 +28,17 @@ export const MarketPanel: React.FC<MarketPanelProps> = ({ market }) => {
           <Layers className="w-4 h-4 text-[#7b3fe4]" />
           <span className="font-mono text-xs font-bold text-white tracking-wider">KURU ORDERBOOK // MON-USDC</span>
         </div>
-        <span className="text-[11px] font-mono text-[#64748b]">VENUE: KURU CLOB</span>
+        <span className="text-[11px] font-mono text-[#64748b]">{live ? 'ONCHAIN SNAPSHOT' : 'SYNTHETIC BOOK'}</span>
       </div>
 
       <div className="p-3 space-y-3 flex-1 overflow-y-auto">
+        <div className="price-chart"><div><span>{live ? 'Observed mid price' : 'Replay mid price'}</span><span>{history.length} samples</span></div><svg viewBox="0 0 320 100" role="img" aria-label="Mid price history"><path d="M12 25H308M12 55H308M12 85H308" stroke="#232938" strokeWidth="1" /><polyline points={line} fill="none" stroke="#a77df8" strokeWidth="2" />{prices.length === 1 && <circle cx="12" cy="84" r="3" fill="#a77df8" />}</svg><div><span>{low ? low.toFixed(6) : 'Waiting'}</span><span>{high ? high.toFixed(6) : 'Waiting'}</span></div></div>
         {/* Price & Spread Bar */}
         <div className="grid grid-cols-2 gap-2 bg-[#10131b] p-2.5 rounded border border-[#1a1f2c]">
           <div>
             <div className="text-[10px] uppercase font-mono text-[#64748b]">Mid Price</div>
             <div className="text-xl font-bold font-mono text-white flex items-baseline gap-1">
-              ${market.mid_price.toFixed(4)}
+              ${market.mid_price.toFixed(live ? 6 : 4)}
               <span className="text-[11px] font-normal text-[#94a3b8]">USDC</span>
             </div>
           </div>
@@ -82,7 +92,7 @@ export const MarketPanel: React.FC<MarketPanelProps> = ({ market }) => {
                   className="absolute right-0 top-0 bottom-0 bg-rose-500/10 pointer-events-none"
                   style={{ width: `${Math.min(100, (ask.size / 6000) * 100)}%` }}
                 />
-                <span className="font-semibold relative z-10">{ask.price.toFixed(4)}</span>
+                <span className="font-semibold relative z-10">{ask.price.toFixed(live ? 6 : 4)}</span>
                 <span className="relative z-10 text-white/90">{ask.size.toLocaleString()}</span>
               </div>
             ))}
@@ -104,7 +114,7 @@ export const MarketPanel: React.FC<MarketPanelProps> = ({ market }) => {
                   className="absolute left-0 top-0 bottom-0 bg-emerald-500/10 pointer-events-none"
                   style={{ width: `${Math.min(100, (bid.size / 6000) * 100)}%` }}
                 />
-                <span className="font-semibold relative z-10">{bid.price.toFixed(4)}</span>
+                <span className="font-semibold relative z-10">{bid.price.toFixed(live ? 6 : 4)}</span>
                 <span className="relative z-10 text-white/90">{bid.size.toLocaleString()}</span>
               </div>
             ))}
@@ -118,7 +128,7 @@ export const MarketPanel: React.FC<MarketPanelProps> = ({ market }) => {
             <span className="font-bold text-white">{(market.volatility_1m * 100).toFixed(2)}%</span>
           </div>
           <div>
-            <span className="text-[10px] text-[#64748b] uppercase block">Aggressive Flow</span>
+            <span className="text-[10px] text-[#64748b] uppercase block">{live ? 'Trade flow not indexed' : 'Simulated Flow'}</span>
             <div className="flex gap-1 text-[11px]">
               <span className="text-emerald-400">+{market.aggressive_buy_flow}</span>
               <span className="text-[#64748b]">/</span>

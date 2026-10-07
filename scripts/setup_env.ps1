@@ -21,8 +21,9 @@ $env:TMPDIR = Join-Path $localDir "tmp"
 $env:XDG_CACHE_HOME = Join-Path $localDir "cache"
 $env:XDG_CONFIG_HOME = Join-Path $localDir "home/.config"
 $env:XDG_DATA_HOME = Join-Path $localDir "home/.local/share"
-$env:HOME = Join-Path $localDir "home"
 $env:USERPROFILE = Join-Path $localDir "home"
+$env:APPDATA = Join-Path $localDir "home/AppData/Roaming"
+$env:LOCALAPPDATA = Join-Path $localDir "home/AppData/Local"
 
 # Node / NPM / PNPM / Yarn
 $env:npm_config_cache = Join-Path $localDir "npm-cache"
@@ -30,6 +31,7 @@ $env:NPM_CONFIG_CACHE = Join-Path $localDir "npm-cache"
 $env:PNPM_HOME = Join-Path $localDir "pnpm-store"
 $env:YARN_CACHE_FOLDER = Join-Path $localDir "yarn-cache"
 $env:COREPACK_HOME = Join-Path $localDir "node/corepack"
+$env:NODE_COMPILE_CACHE = Join-Path $localDir "node/compile-cache"
 
 # Python / ML / AI
 $env:PIP_CACHE_DIR = Join-Path $localDir "python/pip-cache"
@@ -58,10 +60,22 @@ $env:FOUNDRY_DIR = Join-Path $localDir "foundry"
 
 # Browser
 $env:PLAYWRIGHT_BROWSERS_PATH = Join-Path $localDir "playwright"
+$env:PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1"
 
 # Jupyter
 $env:JUPYTER_CONFIG_DIR = Join-Path $localDir "jupyter/config"
 $env:JUPYTER_DATA_DIR = Join-Path $localDir "jupyter/data"
 $env:JUPYTER_RUNTIME_DIR = Join-Path $localDir "jupyter/runtime"
+
+$storageFolders = @(
+    "tmp", "cache", "home", "logs", "downloads", "python", "node", "npm-cache",
+    "pnpm-store", "yarn-cache", "huggingface", "torch", "cuda-cache", "numba-cache",
+    "matplotlib", "jupyter", "playwright", "rust", "go", "gradle", "models", "build",
+    "artifacts", "test-data", "home/AppData/Roaming", "home/AppData/Local"
+)
+foreach ($folder in $storageFolders) {
+    $storagePath = Join-Path $localDir $folder
+    New-Item -ItemType Directory -Force -Path $storagePath | Out-Null
+}
 
 Write-Host "Environment configured. All caches and temp files redirected to $localDir"

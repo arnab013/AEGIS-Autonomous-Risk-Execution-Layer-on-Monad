@@ -4,7 +4,11 @@
   "description": "Real-Time Probabilistic Policy & Risk Engine for Autonomous Onchain Trading on Monad",
   "type": "module",
   "scripts": {
-    "dev": "node ./node_modules/vite/bin/vite.js",
+    "dev": "node ./scripts/dev.mjs",
+    "start": "node --experimental-strip-types ./scripts/server.mjs --production",
+    "setup:contracts": "node ./scripts/setup-contract-tools.mjs",
+    "verify:storage": "node ./scripts/storage-audit.mjs",
+    "verify:live": "node --experimental-strip-types ./scripts/check-live.mjs",
     "build": "node ./node_modules/typescript/bin/tsc && node ./node_modules/vite/bin/vite.js build",
     "preview": "node ./node_modules/vite/bin/vite.js preview",
     "test": "node ./node_modules/vitest/vitest.mjs run"

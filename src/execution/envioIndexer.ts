@@ -1,70 +1,29 @@
-// src/execution/envioIndexer.ts - Envio HyperSync client & Onchain Audit Trail Indexer
-
-import { AuditEvent } from '../types/index.ts';
-
-export interface EnvioIndexedTx {
-  blockNumber: number;
-  txHash: string;
-  from: string;
-  to: string;
-  action: string;
-  amountUsd: number;
-  timestamp: string;
-  status: 'confirmed' | 'reverted';
-  gasUsed: number;
-}
-
+// Local decision audit store. Optional HyperSync height probe is not a transaction indexer.
+import type { AuditEvent } from '../types/index.ts';
 export class EnvioIndexer {
-  private hyperSyncUrl: string;
-  private indexedEvents: AuditEvent[] = [];
-
-  constructor(hyperSyncUrl: string = 'https://monad-testnet.hypersync.xyz') {
-    this.hyperSyncUrl = hyperSyncUrl;
-  }
-
-  /**
-   * Registers and indexes an audit event representing a policy decision, hard risk check, and Monad execution receipt.
-   */
-  public recordAuditEvent(event: AuditEvent): void {
-    this.indexedEvents.unshift(event);
-    if (this.indexedEvents.length > 200) {
-      this.indexedEvents.pop(); // Keep memory bounded
+    private hyperSyncUrl: string;
+    private indexedEvents: AuditEvent[] = [];
+    constructor(hyperSyncUrl = 'https://monad-testnet.hypersync.xyz') { this.hyperSyncUrl = hyperSyncUrl; }
+    public recordAuditEvent(event: AuditEvent): void { this.indexedEvents.unshift(structuredClone(event)); if (this.indexedEvents.length > 200)
+        this.indexedEvents.pop(); }
+    public getAuditTrail(): AuditEvent[] { return structuredClone(this.indexedEvents); }
+    public async queryIndexedEvents(limit = 20): Promise<AuditEvent[]> { return structuredClone(this.indexedEvents.slice(0, Math.max(0, Math.min(200, limit)))); }
+    public async getHyperSyncHeight(): Promise<number> { const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), 5000); try {
+        const response = await fetch(`${this.hyperSyncUrl}/height`, { signal: controller.signal });
+        if (!response.ok)
+            throw new Error(`HyperSync HTTP ${response.status}`);
+        const data = await response.json();
+        if (!Number.isInteger(data.height) || data.height < 0)
+            throw new Error('Invalid HyperSync height');
+        return data.height;
     }
-  }
-
-  /**
-   * Returns chronological audit history for auditing and compliance.
-   */
-  public getAuditTrail(): AuditEvent[] {
-    return [...this.indexedEvents];
-  }
-
-  /**
-   * Queries indexed onchain events with low-latency HyperSync.
-   */
-  public async queryIndexedEvents(limit: number = 20): Promise<AuditEvent[]> {
-    return this.indexedEvents.slice(0, limit);
-  }
-
-  /**
-   * Fetches latest block height indexed by Envio HyperSync on Monad Testnet.
-   */
-  public async getHyperSyncHeight(): Promise<number> {
-    try {
-      const res = await fetch(`${this.hyperSyncUrl}/height`);
-      if (!res.ok) return 0;
-      const data = await res.json();
-      return typeof data?.height === 'number' ? data.height : 0;
-    } catch {
-      return 0;
+    finally {
+        clearTimeout(timeout);
+    } }
+    public async isLiveConnected(): Promise<boolean> { try {
+        return (await this.getHyperSyncHeight()) > 0;
     }
-  }
-
-  /**
-   * Checks HyperSync API availability.
-   */
-  public async isLiveConnected(): Promise<boolean> {
-    const height = await this.getHyperSyncHeight();
-    return height > 0;
-  }
+    catch {
+        return false;
+    } }
 }

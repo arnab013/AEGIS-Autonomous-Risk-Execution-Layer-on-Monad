@@ -12,8 +12,9 @@ export interface ConfidenceMetrics {
  * Calculates information-theoretic confidence metrics from a discrete probability distribution.
  */
 export function calculateConfidence(probabilities: Record<string, number>): ConfidenceMetrics {
-  const values = Object.values(probabilities).filter(v => typeof v === 'number' && !isNaN(v));
-  if (values.length === 0) {
+  const values = Object.values(probabilities);
+  const sum = values.reduce((total, p) => total + p, 0);
+  if (values.length === 0 || values.some(p => typeof p !== 'number' || !Number.isFinite(p) || p < 0 || p > 1) || Math.abs(sum - 1) > 0.01) {
     return {
       max_probability: 0,
       entropy: 1.0,

@@ -145,6 +145,12 @@ export interface JevStatePayload {
     max_leverage: number;
     max_daily_loss: number;
     allowed_actions: TradingAction[];
+    max_order_size?: number;
+    max_slippage_bps?: number;
+    allowed_assets?: string[];
+    allowed_venues?: string[];
+    is_paused?: boolean;
+    stale_order_timeout_seconds?: number;
   };
 }
 
@@ -162,6 +168,12 @@ export interface JevDecisionState {
   abstain_flag: boolean;
   latency_ms: number;
   source: 'typesafe_jev' | 'cached' | 'fallback' | 'simulated';
+  /** Origin survives a cache hit, so a heuristic never looks like a live model. */
+  origin?: 'typesafe_jev' | 'fallback' | 'simulated';
+  model?: string;
+  model_confidence?: number;
+  error?: string;
+  schema_version?: string;
 }
 
 export interface HardCheckItem {
@@ -200,6 +212,11 @@ export interface AuditEvent {
   execution_allowed: boolean;
   transaction_hash?: string;
   venue?: 'kuru' | 'perpl' | 'policy_guard';
+  execution_mode?: 'paper' | 'observe' | 'wallet';
+  decision_source?: string;
+  transaction_status?: 'submitted' | 'confirmed' | 'reverted';
+  chain_id?: number;
+  user_initiated?: boolean;
   reason: string;
   factors: StructuredDecisionFactors;
 }

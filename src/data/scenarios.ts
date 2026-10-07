@@ -9,8 +9,8 @@ export const REPLAY_SCENARIOS: ReplayScenario[] = [
   {
     id: 'scenario_1_normal',
     title: 'Scenario 1: Steady Range-Bound Market',
-    narrative: 'Normal balanced order book on Kuru, minimal volatility, spread within 3 bps. Jev assigns high probability to range_bound regime and low risk. Agent holds.',
-    target_behavior: 'System holds capital, incurs 0 unnecessary fees, risk utilization remains low.',
+    narrative: 'Synthetic balanced order book with small price changes. A local heuristic produces illustrative probabilities; the policy engine evaluates whether to hold.',
+    target_behavior: 'Evaluate a calm market without changing paper inventory when the selected action is hold. No API call or chain transaction occurs.',
     initial_position: {
       spot_exposure_usd: 1200,
       perp_exposure_usd: 0,
@@ -32,7 +32,7 @@ export const REPLAY_SCENARIOS: ReplayScenario[] = [
         asks: [{ price: 4.001, size: 2400 }, { price: 4.005, size: 3800 }, { price: 4.010, size: 6200 }],
         aggressive_buy_flow: 1200,
         aggressive_sell_flow: 1150,
-        description: 'T=0s: Balanced order book, 5 bps spread, equal volume flows.'
+        description: 'Replay T=0s: Balanced synthetic book and similar buy/sell flow.'
       },
       {
         timestamp_offset_ms: 1000,
@@ -41,7 +41,7 @@ export const REPLAY_SCENARIOS: ReplayScenario[] = [
         asks: [{ price: 4.003, size: 2500 }, { price: 4.007, size: 3900 }, { price: 4.012, size: 6000 }],
         aggressive_buy_flow: 1400,
         aggressive_sell_flow: 1300,
-        description: 'T=1s: Minor uptick, bid/ask depth remains symmetric.'
+        description: 'Replay T=1s: Small synthetic uptick with balanced depth.'
       },
       {
         timestamp_offset_ms: 2000,
@@ -50,7 +50,7 @@ export const REPLAY_SCENARIOS: ReplayScenario[] = [
         asks: [{ price: 4.002, size: 2600 }, { price: 4.006, size: 4000 }, { price: 4.011, size: 5800 }],
         aggressive_buy_flow: 900,
         aggressive_sell_flow: 950,
-        description: 'T=2s: Price mean reverts to $4.001. Jev policy selects HOLD with 82% confidence.'
+        description: 'Replay T=2s: Synthetic price settles near its starting level. Inspect the computed probabilities and selected action.'
       }
     ]
   },
@@ -61,8 +61,8 @@ export const REPLAY_SCENARIOS: ReplayScenario[] = [
   {
     id: 'scenario_2_bullish',
     title: 'Scenario 2: Bullish Order Flow & Expansion',
-    narrative: 'Heavy aggressive buy flow on Kuru, positive order book imbalance (+0.68), low volatility. Jev signals trending_up and recommends increase_position. Hard risk gate verifies limits and executes Kuru buy.',
-    target_behavior: 'System safely increases exposure via Kuru spot limit buy order with fast sub-second confirmation on Monad.',
+    narrative: 'Synthetic buying pressure and stronger bid depth support an increase proposal from the local heuristic. Any paper purchase must pass the current user limits.',
+    target_behavior: 'A permitted paper taker purchase walks the supplied synthetic asks and updates paper cash/inventory. No live Kuru order is placed.',
     initial_position: {
       spot_exposure_usd: 800,
       perp_exposure_usd: 0,
@@ -84,7 +84,7 @@ export const REPLAY_SCENARIOS: ReplayScenario[] = [
         asks: [{ price: 4.052, size: 1800 }, { price: 4.055, size: 2200 }, { price: 4.060, size: 3100 }],
         aggressive_buy_flow: 5800,
         aggressive_sell_flow: 850,
-        description: 'T=0s: Substantial buy wall formed. Ask side thinning rapidly.'
+        description: 'Replay T=0s: Synthetic bid depth exceeds ask depth.'
       },
       {
         timestamp_offset_ms: 1000,
@@ -93,7 +93,7 @@ export const REPLAY_SCENARIOS: ReplayScenario[] = [
         asks: [{ price: 4.082, size: 1200 }, { price: 4.086, size: 1800 }, { price: 4.090, size: 2500 }],
         aggressive_buy_flow: 8400,
         aggressive_sell_flow: 600,
-        description: 'T=1s: MON price breaks out to $4.08. Imbalance +0.72. Jev P(increase_position) = 0.74.'
+        description: 'Replay T=1s: Synthetic price rises with buying flow. Probabilities are calculated by the heuristic at runtime.'
       },
       {
         timestamp_offset_ms: 2000,
@@ -102,7 +102,7 @@ export const REPLAY_SCENARIOS: ReplayScenario[] = [
         asks: [{ price: 4.102, size: 1100 }, { price: 4.105, size: 1600 }, { price: 4.110, size: 2200 }],
         aggressive_buy_flow: 9200,
         aggressive_sell_flow: 750,
-        description: 'T=2s: Hard risk gate passes all 8 checks. Kuru limit order placed and filled on Monad.'
+        description: 'Replay T=2s: Inspect policy checks and any paper fill. A failed check blocks the proposal.'
       }
     ]
   },
@@ -112,9 +112,9 @@ export const REPLAY_SCENARIOS: ReplayScenario[] = [
   // -------------------------------------------------------------
   {
     id: 'scenario_3_volatility_cancel',
-    title: 'Scenario 3: Volatility Shock & Orderbook Evacuation',
-    narrative: 'Sudden sell-side dump, bid depth evaporates, volatility percentile jumps to 96th, and 3 open maker orders sit dangerously close to aggressive flow. Jev detects high_volatility / liquidity_stress, triggers cancel_orders.',
-    target_behavior: 'Atomic batch cancellation of stale orders on Kuru within 150ms on Monad, preventing catastrophic adverse selection.',
+    title: 'Scenario 3: Liquidity Shock & Paper Cancellation',
+    narrative: 'Synthetic sell pressure, wider spreads and weaker bids stress three existing paper orders. The heuristic and deterministic controls evaluate cancellation.',
+    target_behavior: 'Remove stale orders from the local paper ledger. This does not send a Kuru cancellation transaction or prove prevented losses.',
     initial_position: {
       spot_exposure_usd: 1400,
       perp_exposure_usd: 0,
@@ -140,7 +140,7 @@ export const REPLAY_SCENARIOS: ReplayScenario[] = [
         asks: [{ price: 3.995, size: 8500 }, { price: 4.010, size: 14000 }, { price: 4.030, size: 22000 }],
         aggressive_buy_flow: 400,
         aggressive_sell_flow: 12500,
-        description: 'T=0s: Enormous sell volume sweeps bids. Spread widens from 4 bps to 28 bps.'
+        description: 'Replay T=0s: Synthetic selling pressure and a wide bid/ask spread.'
       },
       {
         timestamp_offset_ms: 1000,
@@ -149,7 +149,7 @@ export const REPLAY_SCENARIOS: ReplayScenario[] = [
         asks: [{ price: 3.930, size: 11000 }, { price: 3.950, size: 18000 }, { price: 3.980, size: 28000 }],
         aggressive_buy_flow: 200,
         aggressive_sell_flow: 18400,
-        description: 'T=1s: Heavy downside continuation. Volatility percentile hits 96th. Jev P(cancel_orders) = 0.88.'
+        description: 'Replay T=1s: Synthetic downside continuation increases the computed volatility stress index.'
       },
       {
         timestamp_offset_ms: 2000,
@@ -158,19 +158,19 @@ export const REPLAY_SCENARIOS: ReplayScenario[] = [
         asks: [{ price: 3.890, size: 13000 }, { price: 3.910, size: 21000 }, { price: 3.940, size: 31000 }],
         aggressive_buy_flow: 150,
         aggressive_sell_flow: 21000,
-        description: 'T=2s: Batch cancel transaction confirmed on Monad in 120ms. 3 stale orders revoked.'
+        description: 'Replay T=2s: Inspect the local order ledger and paper cancellation record; no chain receipt exists.'
       }
     ]
   },
 
   // -------------------------------------------------------------
-  // Scenario 4: Downside Uncertainty & Perpl Delta Hedging
+  // Scenario 4: Downside Uncertainty & Paper Hedge Proposal
   // -------------------------------------------------------------
   {
     id: 'scenario_4_hedge',
-    title: 'Scenario 4: Downside Turbulence & Perpl Dynamic Hedge',
-    narrative: 'User holds $1,800 MON spot. Macro volatility spikes and downside risk mounts, but the user mandate specifies preserving spot MON and hedging instead of selling spot. Jev identifies P(hedge) = 0.72. Perpl opens short hedge.',
-    target_behavior: 'Perpl short perpetual opened while keeping spot allocation intact. Portfolio net delta neutralized from +$1,800 to $0.',
+    title: 'Scenario 4: Downside Stress & Paper Hedge',
+    narrative: 'Synthetic downside stress tests a bounded protective hedge proposal. The default slippage cap can block it. Replay uses spot-book prices for an indicative paper hedge; Perpl is not integrated.',
+    target_behavior: 'Show the default policy rejection. An explicitly relaxed slippage cap can permit a small paper hedge if all current checks pass; it does not neutralize the whole portfolio or create a Perpl position.',
     initial_position: {
       spot_exposure_usd: 1800,
       perp_exposure_usd: 0,
@@ -192,7 +192,7 @@ export const REPLAY_SCENARIOS: ReplayScenario[] = [
         asks: [{ price: 4.008, size: 5500 }, { price: 4.020, size: 8500 }, { price: 4.050, size: 12000 }],
         aggressive_buy_flow: 1200,
         aggressive_sell_flow: 6500,
-        description: 'T=0s: Spot exposure utilization at 90%. Sell pressure builds on Kuru.'
+        description: 'Replay T=0s: Synthetic selling pressure affects an existing paper MON position.'
       },
       {
         timestamp_offset_ms: 1000,
@@ -201,7 +201,7 @@ export const REPLAY_SCENARIOS: ReplayScenario[] = [
         asks: [{ price: 3.970, size: 7800 }, { price: 3.990, size: 11500 }, { price: 4.020, size: 16000 }],
         aggressive_buy_flow: 800,
         aggressive_sell_flow: 11200,
-        description: 'T=1s: Jev risk probability: High=68%, Critical=16%. Action probability P(hedge)=0.72.'
+        description: 'Replay T=1s: Inspect heuristic risk/action probabilities and the slippage rejection under the current mandate.'
       },
       {
         timestamp_offset_ms: 2000,
@@ -210,7 +210,7 @@ export const REPLAY_SCENARIOS: ReplayScenario[] = [
         asks: [{ price: 3.940, size: 9200 }, { price: 3.960, size: 13500 }, { price: 3.990, size: 19000 }],
         aggressive_buy_flow: 600,
         aggressive_sell_flow: 14500,
-        description: 'T=2s: Perpl short hedge of $1,000 executed. Net delta reduced from +$1,800 to +$800. Capital protected.'
+        description: 'Replay T=2s: Compare the default cap with an explicitly chosen higher cap. Any permitted hedge changes only the paper ledger.'
       }
     ]
   },
@@ -220,9 +220,9 @@ export const REPLAY_SCENARIOS: ReplayScenario[] = [
   // -------------------------------------------------------------
   {
     id: 'scenario_5_risk_gate_blocks',
-    title: 'Scenario 5: Safety Invariant Test — Hard Risk Gate BLOCKS Jev',
-    narrative: 'AI hallucination / runaway bullish signal: Jev attempts to increase position, but user policy has a hard $2,000 max exposure limit and current exposure is already $1,950. The Deterministic Risk Engine forcefully BLOCKS execution and logs violation.',
-    target_behavior: 'NON-NEGOTIABLE SAFETY: Execution is rejected with 0 Monad transaction submitted. Audit trail records policy breach.',
+    title: 'Scenario 5: Oversized Proposal Blocked',
+    narrative: 'A synthetic bullish signal proposes adding inventory near the position cap. The local heuristic can favor an increase, while deterministic policy rejects a proposal that exceeds the user limit.',
+    target_behavior: 'Show the failed prospective-exposure check and unchanged paper inventory. The journal records the rejection; replay never requests a wallet transaction.',
     initial_position: {
       spot_exposure_usd: 1950,
       perp_exposure_usd: 0,
@@ -244,7 +244,7 @@ export const REPLAY_SCENARIOS: ReplayScenario[] = [
         asks: [{ price: 4.005, size: 2000 }, { price: 4.010, size: 3500 }, { price: 4.020, size: 5000 }],
         aggressive_buy_flow: 4500,
         aggressive_sell_flow: 900,
-        description: 'T=0s: Position at $1,950 (97.5% of $2,000 cap). High buying flow.'
+        description: 'Replay T=0s: Paper exposure starts close to the default position cap, with synthetic buying flow.'
       },
       {
         timestamp_offset_ms: 1000,
@@ -253,7 +253,7 @@ export const REPLAY_SCENARIOS: ReplayScenario[] = [
         asks: [{ price: 4.045, size: 1400 }, { price: 4.050, size: 2800 }, { price: 4.060, size: 4200 }],
         aggressive_buy_flow: 7200,
         aggressive_sell_flow: 650,
-        description: 'T=1s: Jev erroneously proposes increase_position (clip $250) based on momentum.'
+        description: 'Replay T=1s: The local heuristic can propose an increase. Current limits decide whether the selected trade size is permitted.'
       },
       {
         timestamp_offset_ms: 2000,
@@ -262,7 +262,7 @@ export const REPLAY_SCENARIOS: ReplayScenario[] = [
         asks: [{ price: 4.075, size: 1200 }, { price: 4.080, size: 2200 }, { price: 4.090, size: 3800 }],
         aggressive_buy_flow: 8500,
         aggressive_sell_flow: 500,
-        description: 'T=2s: Deterministic Risk Gate intercepts action: Prospective $2,200 > Cap $2,000. EXECUTION BLOCKED!'
+        description: 'Replay T=2s: Inspect the computed prospective exposure, position cap and blocked proposal in the audit trail.'
       }
     ]
   }

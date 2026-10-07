@@ -1,6 +1,6 @@
 // src/jev/policyEngine.ts - High-level Policy Decision Layer powered by TypeSafe Jev
 
-import {
+import type {
   MarketState,
   PositionState,
   OrdersState,
@@ -57,10 +57,18 @@ export class JevPolicyEngine {
     };
 
     let reason = '';
-    if (decision.abstain_flag) {
-      reason = `Jev confidence score (${(decision.confidence_score * 100).toFixed(0)}%) below threshold or entropy high (${decision.entropy.toFixed(2)}). Defaulting to HOLD.`;
+    if (decision.origin === 'fallback' || decision.source === 'fallback') {
+      reason = `Inference unavailable: ${decision.error ?? 'safe fallback'}. ${decision.selected_action === 'cancel_orders' ? 'Cancelling stale resting orders.' : 'Holding with no additional risk.'}`;
+    } else if (decision.selected_action === 'cancel_orders' && decision.abstain_flag) {
+      reason = 'Directional inference is uncertain; independent order-risk evidence supports cancelling resting orders.';
+    } else if (decision.abstain_flag) {
+      reason = `Uncertainty gate: model confidence ${decision.model_confidence === undefined ? 'unavailable' : (decision.model_confidence * 100).toFixed(0) + '%'}, entropy ${decision.entropy.toFixed(2)}, margin ${decision.top_two_margin.toFixed(2)}. Holding with no additional risk.`;
+    } else if (decision.selected_action === 'hold' && decision.p_anomaly >= 0.7) {
+      reason = `Anomaly probability ${(decision.p_anomaly * 100).toFixed(0)}% blocks additional exposure despite the directional action distribution.`;
+    } else if (decision.selected_action === 'hold' && pHighOrCritical >= 0.6) {
+      reason = `Elevated risk probability ${(pHighOrCritical * 100).toFixed(0)}% blocks additional exposure; no confident permitted protective action is proposed.`;
     } else if (decision.selected_action === 'hedge') {
-      reason = `Downside risk high (${(pHighOrCritical * 100).toFixed(0)}%) & spot exposure ${factors.spot_exposure_utilization}% utilized. Opening protective Perpl short hedge.`;
+      reason = `Downside risk high (${(pHighOrCritical * 100).toFixed(0)}%) & spot exposure ${factors.spot_exposure_utilization}% utilized. Proposing a bounded protective short hedge.`;
     } else if (decision.selected_action === 'cancel_orders') {
       reason = `Market instability / volatility spike detected. Stale orders (${orders.open_orders.length}) require cancellation to prevent toxic fills.`;
     } else if (decision.selected_action === 'increase_position') {

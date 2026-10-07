@@ -1,6 +1,33 @@
 // src/engine/marketMath.ts - Pure deterministic analytics for high-frequency market data
 
-import { OrderBookLevel } from '../types/index.ts';
+import type { OrderBookLevel } from '../types/index.ts';
+
+export interface BookFill {
+  price: number;
+  size: number;
+  notionalUsd: number;
+  slippageBps: number;
+  complete: boolean;
+}
+
+/** Walk real book levels for a quote-notional clip; shared by safety and paper fills. */
+export function quoteMarketFill(levels: OrderBookLevel[], notionalUsd: number, midPrice: number, side: 'buy' | 'sell'): BookFill {
+  let remaining = notionalUsd;
+  let size = 0;
+  let filled = 0;
+  const sorted = [...levels].sort((a, b) => side === 'buy' ? a.price - b.price : b.price - a.price);
+  for (const level of sorted) {
+    if (!Number.isFinite(level.price) || !Number.isFinite(level.size) || level.price <= 0 || level.size <= 0) continue;
+    const clip = Math.min(remaining, level.price * level.size);
+    filled += clip;
+    size += clip / level.price;
+    remaining -= clip;
+    if (remaining <= 1e-8) break;
+  }
+  const price = size > 0 ? filled / size : 0;
+  const slippageBps = midPrice > 0 && price > 0 ? Math.max(0, (side === 'buy' ? price - midPrice : midPrice - price) / midPrice * 10_000) : Infinity;
+  return { price, size, notionalUsd: filled, slippageBps, complete: notionalUsd > 0 && remaining <= 1e-8 };
+}
 
 /**
  * Computes the mid price from top of book (best bid, best ask).

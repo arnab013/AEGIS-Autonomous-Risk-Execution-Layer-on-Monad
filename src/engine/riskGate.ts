@@ -1,159 +1,84 @@
-// src/engine/riskGate.ts - Deterministic, non-negotiable Hard Risk Gate
+import type { TradingAction, UserPolicy, PositionState, MarketState, OrdersState, RiskCheckResult, HardCheckItem } from '../types/index.ts';
+import { quoteMarketFill } from './marketMath.ts';
 
-import {
-  TradingAction,
-  UserPolicy,
-  PositionState,
-  MarketState,
-  OrdersState,
-  RiskCheckResult,
-  HardCheckItem
-} from '../types/index.ts';
-
+/** Code owns authorization. Model scores can never relax any of these checks. */
 export class HardRiskGate {
-  private lastTradeTimestamp: number = 0;
+  private lastTradeTimestamp: number | undefined;
+  private now: () => number;
 
-  /**
-   * Evaluates whether a proposed action passes all non-negotiable risk invariants.
-   * If any check fails, returns allowed: false and explicit violation reasons.
-   */
+  constructor(now: () => number = Date.now) { this.now = now; }
+
   public evaluateAction(
     proposedAction: TradingAction,
     policy: UserPolicy,
     position: PositionState,
     market: MarketState,
     orders: OrdersState,
-    orderSizeUsd: number = 250 // Default standard clip size
+    orderSizeUsd = 250
   ): RiskCheckResult {
     const checks: Record<string, HardCheckItem> = {};
     const violations: string[] = [];
-
-    // 1. Trading Pause / Emergency Switch
-    const pauseCheckPassed = !policy.is_paused;
-    checks['emergency_pause'] = {
-      passed: pauseCheckPassed,
-      message: pauseCheckPassed ? 'System active' : 'CRITICAL: Trading engine is paused by user/circuit-breaker'
+    const trades = ['increase_position', 'reduce_position', 'hedge'].includes(proposedAction);
+    const newRisk = proposedAction === 'increase_position' || proposedAction === 'hedge';
+    const check = (key: string, passed: boolean, message: string, applies = true) => {
+      checks[key] = { passed, message };
+      if (applies && !passed) violations.push(message);
     };
-    if (!pauseCheckPassed && (proposedAction === 'increase_position' || proposedAction === 'hedge')) {
-      violations.push('Trading is currently paused');
-    }
-
-    // 2. Policy Permitted Actions
-    const actionPermitted = policy.permitted_actions.includes(proposedAction);
-    checks['policy_permitted_action'] = {
-      passed: actionPermitted,
-      message: actionPermitted ? `Action ${proposedAction} is in user mandate` : `Action ${proposedAction} is NOT permitted by user policy`
-    };
-    if (!actionPermitted && proposedAction !== 'hold' && proposedAction !== 'cancel_orders') {
-      violations.push(`Action ${proposedAction} disabled in user mandate`);
-    }
-
-    // 3. Max Position Limit
-    const spotExp = position.spot_exposure_usd ?? 0;
-    const prospectiveExposure = spotExp + (proposedAction === 'increase_position' ? orderSizeUsd : 0);
-    const positionLimitPassed = prospectiveExposure <= policy.max_position_usd;
-    checks['max_position_usd'] = {
-      passed: positionLimitPassed,
-      message: `Prospective exposure $${prospectiveExposure.toFixed(2)} vs Max $${policy.max_position_usd.toFixed(2)}`
-    };
-    if (proposedAction === 'increase_position' && !positionLimitPassed) {
-      violations.push(`Prospective exposure ($${prospectiveExposure.toFixed(2)}) would breach max limit ($${policy.max_position_usd.toFixed(2)})`);
-    }
-
-    // 4. Max Leverage Limit
-    const usdc = typeof position.usdc_balance === 'number' ? position.usdc_balance : 1000;
-    const pnl = typeof position.unrealized_pnl === 'number' ? position.unrealized_pnl : 0;
-    const collateralEquity = Math.max(1, usdc + pnl);
-    const prospectiveLeverage = prospectiveExposure / collateralEquity;
-    const leverageLimitPassed = prospectiveLeverage <= policy.max_leverage;
-    checks['max_leverage'] = {
-      passed: leverageLimitPassed,
-      message: `Prospective leverage ${prospectiveLeverage.toFixed(2)}x vs Max ${policy.max_leverage.toFixed(2)}x`
-    };
-    if (proposedAction === 'increase_position' && !leverageLimitPassed) {
-      violations.push(`Leverage ${prospectiveLeverage.toFixed(2)}x would exceed max cap ${policy.max_leverage.toFixed(2)}x`);
-    }
-
-    // 5. Max Daily Loss / Drawdown Limit
-    const realizedPnl = typeof position.realized_pnl_today === 'number' ? position.realized_pnl_today : 0;
-    const totalLossToday = Math.min(0, realizedPnl + pnl);
-    const lossLimitPassed = Math.abs(totalLossToday) < policy.max_daily_loss;
-    checks['max_daily_loss'] = {
-      passed: lossLimitPassed,
-      message: `Total daily loss $${Math.abs(totalLossToday).toFixed(2)} vs Max $${policy.max_daily_loss.toFixed(2)}`
-    };
-    if (!lossLimitPassed && proposedAction === 'increase_position') {
-      violations.push(`Daily loss limit reached ($${Math.abs(totalLossToday).toFixed(2)} >= $${policy.max_daily_loss.toFixed(2)})`);
-    }
-
-    // 6. Max Order Size Limit
-    const orderSizePassed = orderSizeUsd <= policy.max_order_size;
-    checks['max_order_size'] = {
-      passed: orderSizePassed,
-      message: `Order size $${orderSizeUsd.toFixed(2)} vs Max $${policy.max_order_size.toFixed(2)}`
-    };
-    if (!orderSizePassed && (proposedAction === 'increase_position' || proposedAction === 'hedge')) {
-      violations.push(`Order size $${orderSizeUsd.toFixed(2)} exceeds cap $${policy.max_order_size.toFixed(2)}`);
-    }
-
-    // 7. Orderbook Liquidity Depth Check
-    const availableDepth = proposedAction === 'increase_position' ? market.ask_depth_25bps : market.bid_depth_25bps;
-    const liquidityPassed = availableDepth >= policy.min_liquidity_depth_usd;
-    checks['min_liquidity_depth'] = {
-      passed: liquidityPassed,
-      message: `Available depth $${availableDepth.toFixed(2)} vs Min required $${policy.min_liquidity_depth_usd.toFixed(2)}`
-    };
-    if (!liquidityPassed && (proposedAction === 'increase_position' || proposedAction === 'reduce_position')) {
-      violations.push(`Insufficient orderbook depth ($${availableDepth.toFixed(2)} < $${policy.min_liquidity_depth_usd.toFixed(2)})`);
-    }
-
-    // 8. Open Order Count Cap
-    const orderCountPassed = orders.open_orders.length <= policy.max_open_orders;
-    checks['max_open_orders'] = {
-      passed: orderCountPassed,
-      message: `Open orders: ${orders.open_orders.length} vs Max: ${policy.max_open_orders}`
-    };
-    if (!orderCountPassed && proposedAction === 'increase_position') {
-      violations.push(`Max open orders cap reached (${orders.open_orders.length}/${policy.max_open_orders})`);
-    }
-
-    // 9. Cooldown between new-risk actions
-    const now = Date.now();
-    const timeSinceLastTrade = (now - this.lastTradeTimestamp) / 1000;
-    const cooldownPassed = this.lastTradeTimestamp === 0 || timeSinceLastTrade >= policy.cooldown_seconds;
-    checks['trade_cooldown'] = {
-      passed: cooldownPassed,
-      message: cooldownPassed ? 'Cooldown satisfied' : `In cooldown: ${timeSinceLastTrade.toFixed(1)}s / ${policy.cooldown_seconds}s`
-    };
-    if (!cooldownPassed && (proposedAction === 'increase_position' || proposedAction === 'hedge')) {
-      violations.push(`Action throttled by cooldown (${timeSinceLastTrade.toFixed(1)}s elapsed)`);
-    }
-
-    // Determine final outcome
+    const positive = (v: number) => Number.isFinite(v) && v > 0;
+    const nonnegative = (v: number) => Number.isFinite(v) && v >= 0;
+    check('bounded_action', ['increase_position', 'reduce_position', 'hold', 'hedge', 'cancel_orders'].includes(proposedAction), 'Unknown trading action is not authorized');
+    const validPolicy = [policy.max_position_usd, policy.max_leverage, policy.max_daily_loss, policy.max_order_size].every(nonnegative)
+      && [policy.max_slippage_bps, policy.max_open_orders, policy.stale_order_timeout_seconds, policy.min_liquidity_depth_usd, policy.cooldown_seconds].every(nonnegative)
+      && Number.isInteger(policy.max_open_orders) && Array.isArray(policy.allowed_assets) && Array.isArray(policy.allowed_venues) && Array.isArray(policy.permitted_actions);
+    const validPosition = [position.spot_exposure_usd, position.spot_balance_mon, position.usdc_balance, position.perp_short_size_mon].every(nonnegative)
+      && [position.perp_exposure_usd, position.net_delta, position.unrealized_pnl, position.realized_pnl_today].every(Number.isFinite);
+    const validOrders = orders.open_orders.every(order => positive(order.price) && positive(order.size) && nonnegative(order.age_seconds));
+    check('valid_inputs', validPolicy && validPosition && validOrders && (!trades || positive(orderSizeUsd)), 'Risk inputs, policy limits and order size must be finite and valid', trades);
+    check('emergency_pause', !policy.is_paused, policy.is_paused ? 'Trading is currently paused' : 'System active', newRisk);
+    const permitted = Array.isArray(policy.permitted_actions) && policy.permitted_actions.includes(proposedAction);
+    check('policy_permitted_action', permitted, permitted ? `Action ${proposedAction} is in user mandate` : `Action ${proposedAction} disabled in user mandate`, trades);
+    const venue = proposedAction === 'hedge' ? 'perpl' : 'kuru';
+    check('allowed_venue', policy.allowed_venues?.includes(venue), `Venue ${venue} must be allowed by user policy`, trades);
+    const assets = market.pair.split('/');
+    check('allowed_assets', assets.length === 2 && assets.every(asset => policy.allowed_assets?.includes(asset)), `Assets ${market.pair} must be allowed by user policy`, trades);
+    const now = this.now();
+    const fresh = Number.isFinite(market.timestamp) && now - market.timestamp <= 15_000 && market.timestamp <= now + 1000;
+    const validBook = market.bids.length > 0 && market.asks.length > 0 && market.bids.every(level => positive(level.price) && positive(level.size))
+      && market.asks.every(level => positive(level.price) && positive(level.size))
+      && Math.max(...market.bids.map(level => level.price)) <= Math.min(...market.asks.map(level => level.price));
+    check('market_freshness', fresh && validBook && positive(market.mid_price) && nonnegative(market.spread_bps), 'Market book must be valid, uncrossed and no older than 15 seconds', trades);
+    const open = orders.open_orders.filter(order => order.status === 'open');
+    const pendingBuys = open.filter(order => order.side === 'buy').reduce((sum, order) => sum + Math.max(order.price, market.mid_price) * order.size, 0);
+    const prospectiveSpot = position.spot_exposure_usd + pendingBuys + (proposedAction === 'increase_position' ? orderSizeUsd : 0);
+    check('max_position_usd', prospectiveSpot <= policy.max_position_usd,
+      `Prospective exposure ($${prospectiveSpot.toFixed(2)}) would breach max limit ($${policy.max_position_usd.toFixed(2)})`, proposedAction === 'increase_position');
+    // Discard positive unverified PnL; negative PnL conservatively reduces collateral.
+    const equity = position.usdc_balance + position.spot_exposure_usd + Math.min(0, position.unrealized_pnl);
+    const grossExposure = prospectiveSpot + Math.abs(position.perp_exposure_usd) + (proposedAction === 'hedge' ? orderSizeUsd : 0);
+    const leverage = equity > 0 ? grossExposure / equity : Infinity;
+    check('max_leverage', leverage <= policy.max_leverage, `Leverage ${leverage.toFixed(2)}x would exceed max cap ${policy.max_leverage.toFixed(2)}x`, newRisk);
+    const loss = Math.max(0, -(position.realized_pnl_today + position.unrealized_pnl));
+    check('max_daily_loss', loss < policy.max_daily_loss, `Daily loss limit reached ($${loss.toFixed(2)} >= $${policy.max_daily_loss.toFixed(2)})`, newRisk);
+    check('max_order_size', positive(orderSizeUsd) && orderSizeUsd <= policy.max_order_size, `Order size $${orderSizeUsd.toFixed(2)} exceeds cap $${policy.max_order_size.toFixed(2)}`, trades);
+    check('cash_available', position.usdc_balance >= orderSizeUsd + pendingBuys, 'Insufficient unreserved USDC for proposed spot purchase', proposedAction === 'increase_position');
+    const pendingSells = open.filter(order => order.side === 'sell').reduce((sum, order) => sum + order.size, 0);
+    const fill = quoteMarketFill(proposedAction === 'increase_position' ? market.asks : market.bids, orderSizeUsd, market.mid_price, proposedAction === 'increase_position' ? 'buy' : 'sell');
+    check('inventory_available', position.spot_balance_mon - pendingSells >= fill.size && position.spot_exposure_usd >= orderSizeUsd, 'Insufficient unreserved MON for proposed reduction', proposedAction === 'reduce_position');
+    check('hedge_reduces_delta', position.net_delta > 0 && fill.size * market.mid_price <= position.net_delta, 'Protective hedge cannot exceed current positive net delta', proposedAction === 'hedge');
+    const depth = proposedAction === 'increase_position' ? market.ask_depth_25bps : market.bid_depth_25bps;
+    check('min_liquidity_depth', Number.isFinite(depth) && depth >= policy.min_liquidity_depth_usd, `Insufficient orderbook depth ($${depth.toFixed(2)} < $${policy.min_liquidity_depth_usd.toFixed(2)})`, trades);
+    check('max_slippage_bps', fill.complete && fill.slippageBps <= policy.max_slippage_bps,
+      `Executable book impact ${fill.slippageBps.toFixed(2)} bps exceeds cap ${policy.max_slippage_bps} bps or cannot fill clip`, trades);
+    check('max_open_orders', open.length < policy.max_open_orders, `Max open orders cap reached (${open.length}/${policy.max_open_orders})`, newRisk);
+    const elapsed = this.lastTradeTimestamp === undefined ? Infinity : (now - this.lastTradeTimestamp) / 1000;
+    check('trade_cooldown', elapsed >= policy.cooldown_seconds, `Action throttled by cooldown (${elapsed.toFixed(1)}s elapsed)`, newRisk);
     const allowed = violations.length === 0;
-    let sanitized_action: TradingAction = proposedAction;
-
-    if (!allowed) {
-      // If proposed risk action was rejected, sanitize safely to HOLD or CANCEL_ORDERS
-      if (orders.oldest_order_age > policy.stale_order_timeout_seconds) {
-        sanitized_action = 'cancel_orders';
-      } else {
-        sanitized_action = 'hold';
-      }
-    }
-
     return {
-      allowed,
-      violations,
-      checks,
-      sanitized_action
+      allowed, violations, checks,
+      sanitized_action: allowed ? proposedAction : (open.length > 0 && orders.oldest_order_age > policy.stale_order_timeout_seconds ? 'cancel_orders' : 'hold')
     };
   }
 
-  /**
-   * Records execution of an approved action to reset cooldown timers.
-   */
-  public recordExecution(): void {
-    this.lastTradeTimestamp = Date.now();
-  }
+  /** Call only after an actual confirmed paper fill or a confirmed execution. */
+  public recordExecution(): void { this.lastTradeTimestamp = this.now(); }
 }
