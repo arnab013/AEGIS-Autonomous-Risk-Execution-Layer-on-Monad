@@ -34,7 +34,7 @@ export const JevPolicyPanel: React.FC<JevPolicyPanelProps> = ({
       <div className="terminal-header flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Cpu className="w-4 h-4 text-[#a77df8]" />
-          <span className="font-mono text-xs font-bold text-white tracking-wider">JEV POLICY ENGINE // BOUNDED PROBABILITIES</span>
+          <span className="font-mono text-xs font-bold text-white tracking-wider">POLICY ENGINE // PROBABILISTIC REASONING</span>
         </div>
         <div className="flex items-center gap-2 text-xs font-mono">
           <span className="text-[11px] px-2 py-0.5 rounded bg-[#7b3fe4]/20 text-[#cbb2fe] border border-[#7b3fe4]/30">

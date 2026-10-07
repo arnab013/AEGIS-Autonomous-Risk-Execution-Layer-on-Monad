@@ -95,4 +95,77 @@ export class MonadClient {
   public getTxExplorerUrl(txHash: Hash | string): string {
     return `https://testnet.monadvision.com/tx/${txHash}`;
   }
+
+  /**
+   * Connects to user's browser wallet (MetaMask / Agent Wallet / EIP-1193) on Monad Testnet.
+   */
+  public async connectBrowserWallet(): Promise<{ address: string; chainId: number }> {
+    if (typeof window === 'undefined' || !(window as any).ethereum) {
+      throw new Error('No Web3 wallet extension found. Please install MetaMask or use an Agent Wallet.');
+    }
+    const eth = (window as any).ethereum;
+    const accounts = await eth.request({ method: 'eth_requestAccounts' });
+    if (!accounts || accounts.length === 0) {
+      throw new Error('No account authorized in wallet');
+    }
+
+    // Ensure connected to Monad Testnet (Chain ID 10143 / 0x279f)
+    try {
+      await eth.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: '0x279f' }],
+      });
+    } catch (switchError: any) {
+      // Add Monad Testnet if not present
+      if (switchError.code === 4902) {
+        await eth.request({
+          method: 'wallet_addEthereumChain',
+          params: [{
+            chainId: '0x279f',
+            chainName: 'Monad Testnet',
+            nativeCurrency: { name: 'MON', symbol: 'MON', decimals: 18 },
+            rpcUrls: ['https://testnet-rpc.monad.xyz'],
+            blockExplorerUrls: ['https://testnet.monadvision.com'],
+          }],
+        });
+      }
+    }
+
+    return {
+      address: accounts[0],
+      chainId: 10143,
+    };
+  }
+
+  /**
+   * Dispatches an actual live transaction to Monad Testnet via connected wallet.
+   */
+  public async sendTransaction(
+    to: Address,
+    valueWei: bigint = 0n,
+    data: string = '0x'
+  ): Promise<Hash> {
+    if (typeof window === 'undefined' || !(window as any).ethereum) {
+      throw new Error('No Web3 wallet available for onchain signing');
+    }
+    const eth = (window as any).ethereum;
+    const accounts = await eth.request({ method: 'eth_accounts' });
+    if (!accounts || accounts.length === 0) {
+      throw new Error('Wallet not connected to Monad');
+    }
+
+    const txParams = {
+      from: accounts[0],
+      to,
+      value: '0x' + valueWei.toString(16),
+      data,
+    };
+
+    const txHash = await eth.request({
+      method: 'eth_sendTransaction',
+      params: [txParams],
+    });
+
+    return txHash as Hash;
+  }
 }

@@ -10,6 +10,11 @@ interface HeaderProps {
   onToggleMode: (mode: 'replay' | 'live') => void;
   rpcLatencyMs: number;
   blockNumber: string;
+  walletAddress?: string | null;
+  walletBalanceMon?: string | null;
+  isConnectingWallet?: boolean;
+  onConnectWallet?: () => void;
+  onDisconnectWallet?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -19,6 +24,11 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleMode,
   rpcLatencyMs,
   blockNumber,
+  walletAddress,
+  walletBalanceMon,
+  isConnectingWallet,
+  onConnectWallet,
+  onDisconnectWallet,
 }) => {
   return (
     <header className="border-b border-[#1c212c] bg-[#0c0e14] px-4 py-2.5 flex items-center justify-between">
@@ -30,12 +40,12 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="font-bold tracking-tight text-white font-mono text-sm">AEGIS // JEV</span>
+              <span className="font-bold tracking-tight text-white font-mono text-sm">AEGIS</span>
               <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-[#7b3fe4]/20 text-[#a77df8] border border-[#7b3fe4]/30">
                 Monad Onchain Finance
               </span>
             </div>
-            <p className="text-[11px] text-[#64748b]">Probabilistic Policy & Hard Risk Engine</p>
+            <p className="text-[11px] text-[#64748b]">Autonomous Risk & Execution Layer</p>
           </div>
         </div>
 
@@ -85,6 +95,39 @@ export const Header: React.FC<HeaderProps> = ({
             Monad Live
           </button>
         </div>
+
+        {/* Web3 Wallet Connection on Monad */}
+        {walletAddress ? (
+          <div className="flex items-center gap-2 bg-[#141822] px-2.5 py-1 rounded border border-emerald-500/30 text-xs font-mono">
+            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+            <span className="text-[#e2e8f0]">
+              {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+            </span>
+            {walletBalanceMon && (
+              <span className="text-emerald-400 font-semibold border-l border-[#1e2433] pl-2">
+                {walletBalanceMon} MON
+              </span>
+            )}
+            {onDisconnectWallet && (
+              <button
+                onClick={onDisconnectWallet}
+                className="text-[#64748b] hover:text-rose-400 text-[10px] ml-1 uppercase"
+                title="Disconnect Wallet"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        ) : (
+          <button
+            onClick={onConnectWallet}
+            disabled={isConnectingWallet}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-mono font-semibold bg-[#7b3fe4]/20 hover:bg-[#7b3fe4]/30 text-[#a77df8] border border-[#7b3fe4]/40 transition-colors"
+          >
+            <Shield className="w-3.5 h-3.5" />
+            <span>{isConnectingWallet ? 'Connecting...' : 'Connect Wallet'}</span>
+          </button>
+        )}
 
         {/* Circuit Breaker Emergency Pause */}
         <button

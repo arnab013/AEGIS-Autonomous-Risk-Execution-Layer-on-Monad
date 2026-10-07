@@ -1,6 +1,6 @@
-# ⚡ AEGIS // Monad Autonomous Risk & Jev Policy Engine
+# ⚡ AEGIS // Autonomous Risk & Execution Layer on Monad
 
-> **A Real-Time Probabilistic Policy & Deterministic Risk Layer for Autonomous Onchain Finance on Monad**
+> **A Real-Time Probabilistic Policy & Deterministic Risk Engine for Autonomous Onchain Finance**
 
 Built for the **Monad Metropolis Hackathon** (Track: *Onchain Finance & Trading*).
 

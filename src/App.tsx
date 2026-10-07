@@ -23,6 +23,9 @@ export const App: React.FC = () => {
   const [operationMode, setOperationMode] = useState<'replay' | 'live'>('replay');
   const [blockNumber, setBlockNumber] = useState<string>('18492041');
   const [rpcLatencyMs, setRpcLatencyMs] = useState<number>(34);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [walletBalanceMon, setWalletBalanceMon] = useState<string | null>(null);
+  const [isConnectingWallet, setIsConnectingWallet] = useState<boolean>(false);
 
   const scenario = REPLAY_SCENARIOS.find((s) => s.id === currentScenarioId) || REPLAY_SCENARIOS[0];
   const engineRef = useRef<StateEngine>(new StateEngine(scenario.initial_position));
@@ -30,6 +33,26 @@ export const App: React.FC = () => {
 
   const [engineState, setEngineState] = useState<EngineCycleOutput | null>(null);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
+
+  // Connect Web3 Browser Wallet (MetaMask / Agent Wallet)
+  const connectWallet = async () => {
+    setIsConnectingWallet(true);
+    try {
+      const { address } = await monadClientRef.current.connectBrowserWallet();
+      setWalletAddress(address);
+      const balance = await monadClientRef.current.getBalance(address);
+      setWalletBalanceMon(balance);
+    } catch (err: any) {
+      alert(err.message || 'Failed to connect wallet');
+    } finally {
+      setIsConnectingWallet(false);
+    }
+  };
+
+  const disconnectWallet = () => {
+    setWalletAddress(null);
+    setWalletBalanceMon(null);
+  };
 
   // Initialize or reset scenario
   const resetToScenario = (scId: string) => {
@@ -64,6 +87,23 @@ export const App: React.FC = () => {
     const engine = engineRef.current;
     engine.updateMarketState(tick.bids, tick.asks, tick.aggressive_buy_flow, tick.aggressive_sell_flow);
     const cycle = await engine.step();
+
+    // If running in live mode with a connected wallet and the action is approved, dispatch onchain transaction
+    if (operationMode === 'live' && walletAddress && cycle.riskCheck.allowed && cycle.executedAction !== 'hold') {
+      try {
+        const txHash = await monadClientRef.current.sendTransaction(
+          walletAddress as `0x${string}`,
+          0n,
+          '0x'
+        );
+        cycle.txHash = txHash;
+        cycle.auditEvent.transaction_hash = txHash;
+        const updatedBal = await monadClientRef.current.getBalance(walletAddress);
+        setWalletBalanceMon(updatedBal);
+      } catch (txErr: any) {
+        console.warn('Live Monad transaction broadcast bypassed or rejected:', txErr);
+      }
+    }
 
     setEngineState(cycle);
     setAuditEvents((prev) => [cycle.auditEvent, ...prev.slice(0, 49)]);
@@ -138,6 +178,11 @@ export const App: React.FC = () => {
         onToggleMode={handleToggleMode}
         rpcLatencyMs={rpcLatencyMs}
         blockNumber={blockNumber}
+        walletAddress={walletAddress}
+        walletBalanceMon={walletBalanceMon}
+        isConnectingWallet={isConnectingWallet}
+        onConnectWallet={connectWallet}
+        onDisconnectWallet={disconnectWallet}
       />
 
       <main className="p-3.5 space-y-3.5 flex-1 flex flex-col">
