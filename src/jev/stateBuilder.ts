@@ -1,17 +1,15 @@
-// src/jev/stateBuilder.ts - Compact state serialization for Jev Policy Engine
-
 import type {
   MarketState,
   PositionState,
   OrdersState,
   UserPolicy,
   RiskMetrics,
-  JevStatePayload
+  JevStatePayload,
 } from '../types/index.ts';
 import { keccak256, stringToHex } from 'viem';
 
 /**
- * Builds the compact structured JSON state representation required by Jev (Section 7).
+ * Builds the compact structured state sent to Jev.
  * Caps decimal precision to prevent excessive token consumption and focus on salient signals.
  */
 export function buildJevStatePayload(
@@ -85,7 +83,12 @@ export function buildJevStatePayload(
 export function hashStatePayload(payload: JevStatePayload): string {
   const canonicalize = (value: unknown): unknown => {
     if (Array.isArray(value)) return value.map(canonicalize);
-    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([key, val]) => [key, canonicalize(val)]));
+    if (value && typeof value === 'object')
+      return Object.fromEntries(
+        Object.entries(value)
+          .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+          .map(([key, val]) => [key, canonicalize(val)])
+      );
     return value;
   };
   return 'st_' + keccak256(stringToHex(JSON.stringify(canonicalize(payload)))).slice(2);

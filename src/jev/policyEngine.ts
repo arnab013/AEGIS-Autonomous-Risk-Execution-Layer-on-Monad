@@ -1,5 +1,3 @@
-// src/jev/policyEngine.ts - High-level Policy Decision Layer powered by TypeSafe Jev
-
 import type {
   MarketState,
   PositionState,
@@ -9,7 +7,7 @@ import type {
   JevDecisionState,
   TradingAction,
   StructuredDecisionFactors,
-  AuditEvent
+  AuditEvent,
 } from '../types/index.ts';
 import { JevClient } from './client.ts';
 import { buildJevStatePayload, hashStatePayload } from './stateBuilder.ts';
@@ -60,7 +58,8 @@ export class JevPolicyEngine {
     if (decision.origin === 'fallback' || decision.source === 'fallback') {
       reason = `Inference unavailable: ${decision.error ?? 'safe fallback'}. ${decision.selected_action === 'cancel_orders' ? 'Cancelling stale resting orders.' : 'Holding with no additional risk.'}`;
     } else if (decision.selected_action === 'cancel_orders' && decision.abstain_flag) {
-      reason = 'Directional inference is uncertain; independent order-risk evidence supports cancelling resting orders.';
+      reason =
+        'Directional inference is uncertain; independent order-risk evidence supports cancelling resting orders.';
     } else if (decision.abstain_flag) {
       reason = `Uncertainty gate: model confidence ${decision.model_confidence === undefined ? 'unavailable' : (decision.model_confidence * 100).toFixed(0) + '%'}, entropy ${decision.entropy.toFixed(2)}, margin ${decision.top_two_margin.toFixed(2)}. Holding with no additional risk.`;
     } else if (decision.selected_action === 'hold' && decision.p_anomaly >= 0.7) {

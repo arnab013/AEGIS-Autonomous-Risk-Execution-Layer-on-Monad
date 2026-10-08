@@ -1,5 +1,3 @@
-// src/components/Header.tsx - Financial Terminal Navigation & Circuit Breaker
-
 import React from 'react';
 import { Shield, Activity, AlertTriangle, Play, Pause, ExternalLink } from './icons.tsx';
 
@@ -34,7 +32,6 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   return (
     <header className="app-header border-b border-[#1c212c] bg-[#0c0e14] px-4 py-2.5 flex items-center justify-between">
-      {/* Brand & Track */}
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded bg-gradient-to-br from-[#7b3fe4] to-[#200052] flex items-center justify-center border border-[#9b62ff]/40 shadow-sm shadow-[#7b3fe4]/20">
@@ -52,29 +49,29 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         <div className="h-6 w-[1px] bg-[#1c212c] mx-2 hidden sm:block" />
-
-        {/* Network telemetry */}
         <div className="hidden md:flex items-center gap-4 text-xs font-mono text-[#94a3b8]">
           <div className="flex items-center gap-1.5">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
-            <span>Monad {chainId === 143 ? 'Mainnet' : 'Testnet'} ({chainId})</span>
+            <span>
+              Monad {chainId === 143 ? 'Mainnet' : 'Testnet'} ({chainId})
+            </span>
           </div>
           <div className="flex items-center gap-1">
             <Activity className="w-3.5 h-3.5 text-[#64748b]" />
             <span>Last block: #{blockNumber}</span>
           </div>
           <div className="text-[11px] text-[#64748b]">
-            Data: <span className="text-emerald-400">{rpcLatencyMs === null ? 'Unavailable' : `${rpcLatencyMs}ms`}</span>
+            Data:{' '}
+            <span className="text-emerald-400">
+              {rpcLatencyMs === null ? 'Unavailable' : `${rpcLatencyMs}ms`}
+            </span>
           </div>
         </div>
       </div>
-
-      {/* Controls & Emergency Breaker */}
       <div className="flex items-center gap-3">
-        {/* Mode Selector */}
         <div className="flex items-center bg-[#141822] rounded p-0.5 border border-[#1e2433] text-xs font-mono">
           <button
             onClick={() => onToggleMode('replay')}
@@ -97,8 +94,6 @@ export const Header: React.FC<HeaderProps> = ({
             Live Market
           </button>
         </div>
-
-        {/* Web3 Wallet Connection on Monad */}
         {walletAddress ? (
           <div className="flex items-center gap-2 bg-[#141822] px-2.5 py-1 rounded border border-emerald-500/30 text-xs font-mono">
             <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
@@ -130,8 +125,6 @@ export const Header: React.FC<HeaderProps> = ({
             <span>{isConnectingWallet ? 'Connecting...' : 'Connect Wallet'}</span>
           </button>
         )}
-
-        {/* Circuit Breaker Emergency Pause */}
         <button
           onClick={onTogglePause}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-mono font-semibold transition-all ${

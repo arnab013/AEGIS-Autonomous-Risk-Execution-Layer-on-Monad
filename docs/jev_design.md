@@ -1,57 +1,55 @@
 # Jev design
 
-Jev evaluates bounded uncertainty; deterministic code performs calculations and enforces the mandate. The model cannot submit arbitrary calldata, change user limits or sign a wallet transaction.
+Jev assesses a small set of actions from structured market and portfolio state. Code calculates the statistics and checks trading limits; the model cannot change those limits or sign a transaction.
 
-The integration follows [TypeSafe's official System One API](https://docs.typesafe.ai/api): POST https://api.typesafe.ai/v1/systemone with server-side Bearer authentication, typed questions, state and model. The gateway pins the model to jev-latest and builds its own questions. The browser cannot choose an upstream URL, authorization header or unrestricted prompt.
+The gateway follows [TypeSafe's System One API](https://docs.typesafe.ai/api): POST https://api.typesafe.ai/v1/systemone with Bearer authentication, state, model and typed questions. It uses jev-latest and fixed questions. The browser supplies neither the key nor an arbitrary upstream URL or prompt.
 
-## Questions
+## State and questions
 
-| Question | Type | Bounded output |
-| --- | --- | --- |
-| action | Choice | increase_position, reduce_position, hold, hedge, cancel_orders |
-| regime | Choice | trending_up, trending_down, range_bound, high_volatility, liquidity_stress, uncertain |
-| risk | Choice | very_low, low, moderate, high, critical |
-| anomaly | Noul | Probability of anomalous supplied market state |
-| cancel_orders | Noul | Probability that existing resting orders need cancellation |
+| Question      | Type   | Output                                                                                |
+| ------------- | ------ | ------------------------------------------------------------------------------------- |
+| action        | Choice | increase_position, reduce_position, hold, hedge, cancel_orders                        |
+| regime        | Choice | trending_up, trending_down, range_bound, high_volatility, liquidity_stress, uncertain |
+| risk          | Choice | very_low, low, moderate, high, critical                                               |
+| anomaly       | Noul   | Probability that supplied market state is anomalous                                   |
+| cancel_orders | Noul   | Probability that existing orders need cancellation                                    |
 
-The action list describes a risk assessment. Live execution supports only an explicitly requested protective MON sale. A hedge or cancellation recommendation does not establish a working Perpl or resting-order execution integration.
+A recommendation can exceed the implemented execution options. Live currently supports a user-requested protective MON sale; live hedging and resting-order cancellation are unavailable.
 
-Compact state includes book statistics, recent observed returns, wallet/portfolio fields available to the engine, supplied orders, risk metrics and the user policy. Selected fields are rounded for stable transport. Raw current state remains the source for deterministic checks. A canonical sorted JSON state hash binds evidence to the assessed payload.
+State includes book statistics, observed returns, available portfolio fields, supplied orders, risk metrics and policy. Some values are rounded for transport. Deterministic checks use current raw state. A hash of canonical sorted JSON identifies the assessed payload.
 
-Live history starts when the application observes the market. Trade-flow history, realized loss, resting orders and perpetual positions are not indexed. Current live flow fields are zero; this means unavailable flow evidence, not verified absence of trading. The historical field named volatility_percentile is a fixed scaled stress index, not a calibrated percentile.
+Live history begins when observation starts. Flow, realized losses, resting orders and perpetual positions are not indexed. Zero live flow fields indicate missing evidence, not verified inactivity. The field volatility_percentile is a scaled stress index, not an empirical percentile.
 
-## Response validation
+## Validation and uncertainty
 
-The parser requires model identity, all expected typed answers, exactly the permitted option names, finite probabilities in [0, 1], and a distribution totaling one within 0.01 rounding tolerance. It checks that the chosen option matches a maximum probability and normalizes only accepted rounding noise. Missing fields are rejected rather than manufactured.
+State is validated before a paid request. Responses must contain model identity, expected answer types/options, finite probabilities in [0, 1], distributions summing to one within 0.01, and a selected option matching a maximum. Accepted rounding noise is normalized; missing fields fail validation.
 
-[TypeSafe Choice confidence](https://docs.typesafe.ai/confidence) uses:
+[TypeSafe Choice confidence](https://docs.typesafe.ai/confidence) is:
 
-~~~text
+```text
 model confidence = (p_max - 1/n) / (1 - 1/n)
-~~~
+```
 
-The model-reported confidence is kept separately from these Aegis statistics:
+Aegis also calculates:
 
-~~~text
+```text
 normalized entropy H = -sum(p * log2(p)) / log2(n)
 top-two margin = p_1 - p_2
-Aegis composite = 0.40*p_1 + 0.35*(1-H) + 0.25*(p_1-p_2)
-~~~
+composite score = 0.40*p_1 + 0.35*(1-H) + 0.25*(p_1-p_2)
+```
 
-The parser validates reported confidence as a probability; it does not independently attest the upstream model or recompute its reported field. The composite is an application heuristic, not the official model confidence or a profitability probability.
+Reported model confidence is validated as a probability but not independently attested or recomputed. The composite is an application heuristic; none of these measures predicts profit.
 
-The application abstains to hold when entropy exceeds 0.85, margin is below 0.12, maximum probability is below 0.35, or official action confidence is below 0.65. Anomaly probability at least 0.7, or combined high/critical risk at least 0.6, suppresses an increase. Existing-order cancellation probability at least 0.75 may select cancellation despite uncertain direction; live cancellation remains unavailable.
+The application selects hold if entropy exceeds 0.85, margin is below 0.12, maximum probability is below 0.35, or model action confidence is below 0.65. Anomaly at least 0.7 or combined high/critical risk at least 0.6 suppresses an increase. If orders exist, cancellation probability at least 0.75 can select cancellation despite uncertain direction.
 
-## Transport, provenance and failure
+## Requests and failure handling
 
-Paid calls require TYPESAFE_API_KEY and explicit JEV_ENABLE_LIVE=true after credit usage is approved. The gateway applies an eight-second upstream timeout, one in-flight call and a 1.5-second cooldown. It does not provide public authentication or a complete spending quota.
+Paid inference requires TYPESAFE_API_KEY and JEV_ENABLE_LIVE=true after credit approval. The server allows one in-flight call, applies a 1.5-second cooldown and times out after eight seconds. Public authentication and a complete spending quota remain deployment work.
 
-The adapter's optional cache uses state hash, schema version, mode and model, with a ten-second TTL and a bounded entry count. Cached records preserve their original source. The terminal disables live cache. Fallback results are not cached as model responses.
+The optional adapter cache is keyed by state hash, schema, mode and model, with a ten-second TTL and bounded entries. It preserves source labels; fallback is not cached as model output. The terminal disables live caching.
 
-Replay invokes deterministic heuristics and labels them heuristic/simulated. Live inference is requested by the user, not continuously billed by market polling. A disabled service, HTTP error, timeout or invalid response produces an explicit fallback, ordinarily hold; stale-order cancellation is a safe paper behavior where applicable. It must not produce an additional-risk live trade. State changes during inference invalidate acceptance of the assessed state.
+Replay uses labeled local heuristics without API calls. Live assessments are requested by the user. Disabled service, HTTP errors, timeout or invalid output produce fallback, normally hold; stale-order cancellation may apply in paper mode. A changed state invalidates an in-flight assessment.
 
-## Evidence still needed
+The new gateway has not yet been validated through an approved paid response. The [verification report](verification.md) records an inherited baseline test's earlier API request separately. Capture model, source, timing, state hash and probabilities from the new path before submission, excluding secrets.
 
-No paid official response has been captured in this development session. Parser tests exercise response fixtures; they are not proof of a successful TypeSafe call. Before submission, preserve one authorized response with model, source, timing, state hash and probabilities, excluding the key.
-
-The strongest demonstration shows contradictory evidence, explicit abstention and a deterministic blocked proposal. Compare decisions against a simple deterministic baseline on labeled scenarios before claiming that Jev improves decisions. Neither fixture behavior nor entropy establishes prediction accuracy or trading returns.
+To establish Jev's value, compare decisions on labeled ambiguous scenarios with a simple deterministic baseline. Parser fixtures and uncertainty measures alone do not establish decision quality.

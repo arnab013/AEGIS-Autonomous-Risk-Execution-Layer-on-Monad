@@ -1,67 +1,62 @@
-# Local runtime and public deployment
+# Running and deploying Aegis
 
-Aegis requires a Node API server as well as the frontend. A static-only deployment cannot read the market through the gateway, protect the Jev key, simulate proposals or persist the journal.
+Aegis has two runtimes. Locally, Node handles market reads, the Jev key, simulations and a persistent journal. The hosted Cloudflare Worker handles free reads and simulations; its journal stays in the browser session.
 
-## Local startup
+## Local setup
 
-Use Node.js 22.14 or later. The server imports TypeScript modules using Node's strip-types support.
+Use Node.js 22.14 or later and run commands from the configured F: workspace:
 
-~~~powershell
+```powershell
 Set-Location 'F:\Projects\Monad Metropolis'
 . .\scripts\setup_env.ps1
 if (!(Test-Path -LiteralPath '.env')) { Copy-Item -LiteralPath '.env.example' -Destination '.env' }
 npm run dev
-~~~
+```
 
-Reuse installed dependencies when they match package-lock.json. If installation is needed, run npm ci in that configured F: session. Never replace an existing environment file or install tools with unverified write paths.
+Run npm ci first only when dependencies need installation. Preserve an existing .env. Development starts the API on 127.0.0.1:3001 and Vite on 3000, with API proxying.
 
-Development starts the API on 127.0.0.1:3001 and Vite on port 3000. Vite proxies API requests. For the built application:
+For contract tools, the full tests and a built app:
 
-~~~powershell
+```powershell
+npm run setup:contracts
 npm test
 npm run build
 npm start
-~~~
+```
 
-The build command compiles TypeScript and Vite. Start serves dist and the API together on 127.0.0.1:3000. npm run preview provides only the frontend, so it is not the full product runtime.
+The server loads TypeScript with Node's strip-types support. Start serves dist and the API on 127.0.0.1:3000. Vite preview serves the frontend alone.
 
-## Server configuration
+## Configuration
 
-| Setting | Behavior |
-| --- | --- |
-| AEGIS_NETWORK | mainnet by default; testnet selects chain 10143 |
-| TYPESAFE_API_KEY | Server-only TypeSafe key |
-| JEV_ENABLE_LIVE | false unless explicitly set to true after credit usage approval |
-| PORT | Optional server port override |
+| Variable         | Meaning                                      |
+| ---------------- | -------------------------------------------- |
+| AEGIS_NETWORK    | mainnet by default; testnet uses chain 10143 |
+| TYPESAFE_API_KEY | Server-only TypeSafe key                     |
+| JEV_ENABLE_LIVE  | true only after API-credit approval          |
+| PORT             | Optional server port override                |
 
-The gateway currently pins jev-latest. Configuration changes require restart. No private key is required; the user's browser wallet reviews and submits a supported protective sale.
+The model is fixed to jev-latest. Restart after configuration changes. Browser-wallet signing requires no private key in the app.
 
-GET /api/status reports safe service status, chain and market. GET /api/market reads the current pinned-block Kuru snapshot. GET /api/portfolio reads a supplied wallet's MON/USDC. POST /api/prepare simulates a protective sale without signing. POST /api/jev invokes the approved paid service only when enabled. Journal APIs persist and export project-local evidence.
+Status, market and portfolio reads are exposed through /api/status, /api/market and /api/portfolio. Browser chain queries use same-origin /api/rpc with a server-side read-only method allowlist. /api/prepare simulates a sale; /api/jev invokes paid inference when enabled. Journal endpoints save/export under .local/artifacts/audit. Signing stays in the browser wallet.
 
-Mainnet reads have been verified. The official testnet market currently lacks usable bids in development observations; a failure is expected when current data is invalid. Runtime availability must be verified before any demo.
+Mainnet reads and simulation have passed. The documented testnet market lacked bids during verification; check current liquidity before a demo. The [verification report](verification.md) has measurements, artifacts and test results. Clean tests require neither an API key nor paid inference.
 
-On 8 October, 128 tests, the TypeScript/Vite build and browser checks passed. Mainnet calldata simulation/gas estimation succeeded for a 200 MON sale from a funded public account, without signing. The optional Solidity guard was compiled and deployed only inside a local EVM test environment. The configured TypeSafe key was present while paid inference remained disabled. Clean tests require no API key or paid call.
+## Cloudflare hosting
 
-## Public-host work still required
+The [public app](https://aegis-risk-terminal.himaloy2608.workers.dev) runs as aegis-risk-terminal in the user's Cloudflare account. This is a workers.dev subdomain, rather than a purchased domain registration. No plan upgrade or paid storage service was created.
 
-No public app has been deployed in this session. Prepare a concrete host configuration for review before publishing it.
+Run `npm run build:cloudflare` after sourcing setup_env.ps1. It typechecks the frontend and Worker, builds dist, then bundles the API and three static files into .local/artifacts/cloudflare/worker.mjs. wrangler.jsonc records the Worker name and compatibility date. The deployed module was uploaded through the managed Cloudflare connector; no Cloudflare credential was exported.
 
-1. Use a Node host that can run source modules, installed dependencies and dist, with a writable designated journal directory.
-2. Configure a deliberate network bind and HTTPS reverse proxy. The current server binds loopback. Review its Origin comparison and allowlist for the intended HTTPS deployment; the local HTTP assumptions do not constitute public-host configuration.
-3. Keep secrets in the server environment. Leave paid inference off unless access control and spending limits are configured for the intended judge access.
-4. Add appropriate authentication/rate limits, request validation, logs and retention for a public audience. Local Origin checks and cooldown are not authentication or a complete quota.
-5. Decide which wallet/evidence data may be retained. The journal is local and unanchored; disclose access and retention.
-6. Verify the actual public market, inference provenance, proposal simulation, wallet/network changes, errors and receipt reconciliation before publishing the demo.
-7. Publish complete licensed source with attribution, build-window history, AI-tool disclosure and reproducible setup. Record an actual-operation video of at most three minutes.
+The module uses only features available on the [Workers Free plan](https://developers.cloudflare.com/workers/platform/limits/). Because static files are embedded, each asset request also invokes the Worker and counts against the Free plan's 100,000 daily requests. The terminal polls every ten seconds on this host and pauses polling when its browser tab is hidden. The billing/subscription endpoint was not available through the connector, so an account billing-plan check is still needed before claiming the account itself has no paid subscription.
 
-The current gateway is intended for a local single-user workflow. Do not describe it as a hardened multi-user trading service.
+The Worker uses the same Kuru/Monad adapters as Node. It accepts only the approved read-only RPC methods; preparation uses eth_call and gas estimation. Signing stays in the wallet. Public market reads, balance reads, a real 200 MON sale simulation, desktop/mobile replay and wallet-change checks passed.
 
-## Monad execution evidence
+Paid inference is hard-disabled even if someone supplies an enable flag or key. The configured TypeSafe key remains in the ignored local .env. Adding public inference requires owner authentication and a persistent spending quota before enabling it. Origin checks alone are insufficient.
 
-Aegis uses Kuru's existing market contracts. A competition demonstration must preserve the actual chain, market address and an approved transaction hash/receipt. Source code or a reachable app alone does not establish successful execution.
+Hosted events stay in memory in the current browser session. Copy session JSON before reloading. The Worker does not store portfolios, mandates or journals; Node's hash-chain journal remains a local feature.
 
-PolicyGuard is an optional custody path, not part of direct wallet sales, and has not been deployed to Monad. Deploying it is unnecessary for this narrow reviewed-wallet workflow; do not claim its enforcement in the live path.
+The selected source repository is [AEGIS-Autonomous-Risk-Execution-Layer-on-Monad](https://github.com/arnab013/AEGIS-Autonomous-Risk-Execution-Layer-on-Monad). Git origin points there, but the connector returns 404 until repository access is granted. No source has been pushed.
 
-A submitted transaction can remain pending, revert or confirm. Do not retry by submitting a duplicate merely because receipt polling timed out. Resolve the actual hash first. No wallet transaction has been signed or paid inference performed in this development session.
+Aegis uses existing Kuru contracts. Submission still needs a real approved transaction and matching receipt/output. PolicyGuard is separate and has only local EVM deployment; it is not required for the direct wallet workflow.
 
-See [storage policy](local_storage_policy.md), [demo plan](demo_script.md) and [submission checklist](submission.md).
+A pending receipt is not a failed transaction. Resolve the original hash before submitting a replacement. See the [demo script](demo_script.md), [submission checklist](submission.md) and [storage policy](local_storage_policy.md).

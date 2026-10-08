@@ -1,7 +1,7 @@
 {
   "name": "aegis-jev-monad",
   "version": "1.0.0",
-  "description": "Real-Time Probabilistic Policy & Risk Engine for Autonomous Onchain Trading on Monad",
+  "description": "A risk copilot for wallet-reviewed MON trading on Monad",
   "type": "module",
   "scripts": {
     "dev": "node ./scripts/dev.mjs",
@@ -9,17 +9,16 @@
     "setup:contracts": "node ./scripts/setup-contract-tools.mjs",
     "verify:storage": "node ./scripts/storage-audit.mjs",
     "verify:live": "node --experimental-strip-types ./scripts/check-live.mjs",
+    "setup:typesafe": "node ./scripts/setup-typesafe.mjs",
+    "build:cloudflare": "npm run build && node ./scripts/build-worker.mjs",
+    "format": "prettier --write src server cloudflare scripts tests vite.config.ts",
     "build": "node ./node_modules/typescript/bin/tsc && node ./node_modules/vite/bin/vite.js build",
     "preview": "node ./node_modules/vite/bin/vite.js preview",
     "test": "node ./node_modules/vitest/vitest.mjs run"
   },
   "dependencies": {
-    "clsx": "^2.1.1",
-    "lucide-react": "^1.52.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "recharts": "^3.10.1",
-    "tailwind-merge": "^3.7.0",
     "viem": "^2.57.3"
   },
   "devDependencies": {
@@ -27,6 +26,8 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",
+    "esbuild": "0.25.12",
+    "prettier": "3.6.2",
     "typescript": "^5.7.3",
     "vite": "^6.1.0",
     "vitest": "^3.0.5"

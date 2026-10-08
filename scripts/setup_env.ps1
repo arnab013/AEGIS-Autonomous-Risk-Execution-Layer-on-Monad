@@ -1,11 +1,10 @@
-# setup_env.ps1 - Environment variable redirection script
-# Enforces strictly that NO project cache, temporary file, or toolchain data is written to C:
+# Keep tool caches, temporary files and project artifacts on the project drive.
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectRoot = Split-Path -Parent $scriptDir
 
-# Verify not on C:
+# Stop before creating storage if the project was copied to C:.
 if ($projectRoot.ToUpper().StartsWith("C:\")) {
-    Write-Error "CRITICAL ERROR: PROJECT_ROOT is on C:\ drive! Aborting."
+    Write-Error "Move the project off C: before running this setup."
     exit 1
 }
 

@@ -1,5 +1,3 @@
-// src/types/index.ts - Core types for Aegis Jev Probabilistic Risk & Policy Engine
-
 export type TradingAction =
   | 'increase_position'
   | 'reduce_position'
@@ -15,12 +13,7 @@ export type MarketRegime =
   | 'liquidity_stress'
   | 'uncertain';
 
-export type RiskLevel =
-  | 'very_low'
-  | 'low'
-  | 'moderate'
-  | 'high'
-  | 'critical';
+export type RiskLevel = 'very_low' | 'low' | 'moderate' | 'high' | 'critical';
 
 export interface OrderBookLevel {
   price: number;

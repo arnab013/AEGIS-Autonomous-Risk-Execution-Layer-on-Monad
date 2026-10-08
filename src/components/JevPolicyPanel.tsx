@@ -1,7 +1,13 @@
-// src/components/JevPolicyPanel.tsx - Jev Probabilistic Decision & Hard Risk Gate Control Panel
-
 import React from 'react';
-import { Cpu, ShieldAlert, CheckCircle2, XCircle, ExternalLink, HelpCircle, AlertOctagon } from './icons.tsx';
+import {
+  Cpu,
+  ShieldAlert,
+  CheckCircle2,
+  XCircle,
+  ExternalLink,
+  HelpCircle,
+  AlertOctagon,
+} from './icons.tsx';
 import { JevDecisionState, RiskCheckResult, AuditEvent, TradingAction } from '../types/index.ts';
 
 interface JevPolicyPanelProps {
@@ -34,7 +40,9 @@ export const JevPolicyPanel: React.FC<JevPolicyPanelProps> = ({
       <div className="terminal-header flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Cpu className="w-4 h-4 text-[#a77df8]" />
-          <span className="font-mono text-xs font-bold text-white tracking-wider">POLICY ENGINE // PROBABILISTIC REASONING</span>
+          <span className="font-mono text-xs font-bold text-white tracking-wider">
+            POLICY ENGINE // PROBABILISTIC REASONING
+          </span>
         </div>
         <div className="flex items-center gap-2 text-xs font-mono">
           <span className="text-[11px] px-2 py-0.5 rounded bg-[#7b3fe4]/20 text-[#cbb2fe] border border-[#7b3fe4]/30">
@@ -52,8 +60,24 @@ export const JevPolicyPanel: React.FC<JevPolicyPanelProps> = ({
       </div>
 
       <div className="p-3 space-y-3 flex-1 overflow-y-auto">
-        <div className="model-provenance"><strong>{(decision.origin || decision.source) === 'typesafe_jev' ? `Jev · ${decision.model}` : (decision.origin || decision.source) === 'simulated' ? 'Heuristic replay policy' : 'Safe fallback · no model inference'}</strong><span>{decision.latency_ms} ms measured · entropy {decision.entropy.toFixed(2)} · margin {decision.top_two_margin.toFixed(2)}</span><span>Decision snapshot: {new Date(auditEvent.timestamp).toLocaleTimeString()}</span>{decision.model_confidence !== undefined && <span>TypeSafe confidence: {(decision.model_confidence * 100).toFixed(0)}%</span>}{decision.error && <span>{decision.error}</span>}</div>
-        {/* Action Probabilities Distribution */}
+        <div className="model-provenance">
+          <strong>
+            {(decision.origin || decision.source) === 'typesafe_jev'
+              ? `Jev · ${decision.model}`
+              : (decision.origin || decision.source) === 'simulated'
+                ? 'Heuristic replay policy'
+                : 'Safe fallback · no model inference'}
+          </strong>
+          <span>
+            {decision.latency_ms} ms measured · entropy {decision.entropy.toFixed(2)} · margin{' '}
+            {decision.top_two_margin.toFixed(2)}
+          </span>
+          <span>Decision snapshot: {new Date(auditEvent.timestamp).toLocaleTimeString()}</span>
+          {decision.model_confidence !== undefined && (
+            <span>TypeSafe confidence: {(decision.model_confidence * 100).toFixed(0)}%</span>
+          )}
+          {decision.error && <span>{decision.error}</span>}
+        </div>
         <div className="bg-[#10131b] p-3 rounded border border-[#1a1f2c] space-y-2">
           <div className="flex justify-between items-center text-[10px] uppercase font-mono text-[#64748b]">
             <span>Action Probability Vector</span>
@@ -89,10 +113,7 @@ export const JevPolicyPanel: React.FC<JevPolicyPanelProps> = ({
               })}
           </div>
         </div>
-
-        {/* Risk Level & Market Regime Two-Column */}
         <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-          {/* Risk Level Distribution */}
           <div className="bg-[#10131b] p-2.5 rounded border border-[#1a1f2c] space-y-1.5">
             <div className="text-[10px] uppercase text-[#64748b]">Risk Distribution</div>
             {Object.entries(decision.risk_probabilities).map(([riskLevel, prob]) => {
@@ -100,18 +121,26 @@ export const JevPolicyPanel: React.FC<JevPolicyPanelProps> = ({
               const isHighOrCrit = riskLevel === 'high' || riskLevel === 'critical';
               return (
                 <div key={riskLevel} className="flex justify-between text-[11px]">
-                  <span className={isHighOrCrit && pct > 40 ? 'text-rose-400 font-semibold uppercase' : 'text-[#94a3b8] capitalize'}>
+                  <span
+                    className={
+                      isHighOrCrit && pct > 40
+                        ? 'text-rose-400 font-semibold uppercase'
+                        : 'text-[#94a3b8] capitalize'
+                    }
+                  >
                     {riskLevel}
                   </span>
-                  <span className={isHighOrCrit && pct > 40 ? 'text-rose-400 font-bold' : 'text-[#64748b]'}>
+                  <span
+                    className={
+                      isHighOrCrit && pct > 40 ? 'text-rose-400 font-bold' : 'text-[#64748b]'
+                    }
+                  >
                     {pct}%
                   </span>
                 </div>
               );
             })}
           </div>
-
-          {/* Market Regime Distribution */}
           <div className="bg-[#10131b] p-2.5 rounded border border-[#1a1f2c] space-y-1.5">
             <div className="text-[10px] uppercase text-[#64748b]">Market Regime</div>
             {Object.entries(decision.regime_probabilities).map(([regime, prob]) => {
@@ -130,13 +159,13 @@ export const JevPolicyPanel: React.FC<JevPolicyPanelProps> = ({
             })}
           </div>
         </div>
-
-        {/* Hard Risk Gate Execution Result Banner */}
-        <div className={`p-3 rounded border text-xs font-mono space-y-2 ${
-          isExecutionBlocked
-            ? 'bg-rose-950/30 border-rose-600/50 text-rose-200'
-            : 'bg-emerald-950/20 border-emerald-600/40 text-emerald-200'
-        }`}>
+        <div
+          className={`p-3 rounded border text-xs font-mono space-y-2 ${
+            isExecutionBlocked
+              ? 'bg-rose-950/30 border-rose-600/50 text-rose-200'
+              : 'bg-emerald-950/20 border-emerald-600/40 text-emerald-200'
+          }`}
+        >
           <div className="flex items-center gap-2">
             {isExecutionBlocked ? (
               <AlertOctagon className="w-4 h-4 text-rose-400 shrink-0" />
@@ -144,17 +173,17 @@ export const JevPolicyPanel: React.FC<JevPolicyPanelProps> = ({
               <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
             )}
             <span className="font-bold tracking-wide">
-              {isExecutionBlocked ? 'HARD RISK GATE: EXECUTION BLOCKED' : 'LOCAL POLICY CHECKS: PASSED'}
+              {isExecutionBlocked
+                ? 'HARD RISK GATE: EXECUTION BLOCKED'
+                : 'LOCAL POLICY CHECKS: PASSED'}
             </span>
           </div>
 
-          <div className="text-[11px] leading-relaxed text-[#cbd5e1]">
-            {auditEvent.reason}
-          </div>
-
-          {/* Monad Transaction Link or Zero-Tx Proof */}
+          <div className="text-[11px] leading-relaxed text-[#cbd5e1]">{auditEvent.reason}</div>
           <div className="pt-2 border-t border-white/10 flex items-center justify-between text-[11px]">
-            <span>{auditEvent.execution_mode === 'paper' ? 'Paper execution:' : 'Monad transaction:'}</span>
+            <span>
+              {auditEvent.execution_mode === 'paper' ? 'Paper execution:' : 'Monad transaction:'}
+            </span>
             {lastTxHash ? (
               <a
                 href={`https://testnet.monadvision.com/tx/${lastTxHash}`}
@@ -162,11 +191,17 @@ export const JevPolicyPanel: React.FC<JevPolicyPanelProps> = ({
                 rel="noreferrer"
                 className="text-[#a77df8] hover:underline flex items-center gap-1 font-semibold"
               >
-                <span>{lastTxHash.slice(0, 8)}...{lastTxHash.slice(-6)}</span>
+                <span>
+                  {lastTxHash.slice(0, 8)}...{lastTxHash.slice(-6)}
+                </span>
                 <ExternalLink className="w-3 h-3" />
               </a>
             ) : (
-              <span className="text-[#94a3b8]">{auditEvent.execution_mode === 'paper' ? 'Simulated · no chain transaction' : 'No transaction submitted'}</span>
+              <span className="text-[#94a3b8]">
+                {auditEvent.execution_mode === 'paper'
+                  ? 'Simulated · no chain transaction'
+                  : 'No transaction submitted'}
+              </span>
             )}
           </div>
         </div>

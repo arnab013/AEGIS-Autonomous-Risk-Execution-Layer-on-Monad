@@ -1,86 +1,65 @@
-# Aegis — submission draft and evidence checklist
+# Aegis submission draft
 
-**Working draft, 8 October 2026.** Replace every pending evidence item with a reproducible result before submission. Do not submit earlier claims of deployed contracts, live hedges, measured finality, security audits, or bounty qualification without proof.
+Working draft, 8 October 2026. Complete the missing execution and publication evidence before submitting.
 
-## Project details
+| Field              | Value                                                                                                                            |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| Name               | Aegis                                                                                                                            |
+| One-liner          | A MON/USDC risk terminal that checks user limits before a wallet-reviewed trade                                                  |
+| Track              | Onchain Finance & Trading                                                                                                        |
+| Event              | [Monad Metropolis](https://monad.xyz/developers/hackathons/metropolis)                                                           |
+| Deadline           | 14 October 2026, 03:59 UTC / 05:59 CEST in Paris; confirm in the registered project                                              |
+| Public app         | [Cloudflare app](https://aegis-risk-terminal.himaloy2608.workers.dev)                                                            |
+| Repository         | [Selected repository](https://github.com/arnab013/AEGIS-Autonomous-Risk-Execution-Layer-on-Monad); push pending connector access |
+| Demo / pitch video | Pending                                                                                                                          |
+| Judge access       | No login for public market, replay or sale simulation; hosted paid inference disabled                                            |
 
-- **Name:** Aegis
-- **One-liner:** A probabilistic risk copilot for wallet-reviewed MON/USDC trading on Monad.
-- **Primary track:** Onchain Finance & Trading
-- **Official event:** [Monad Metropolis](https://monad.xyz/developers/hackathons/metropolis)
-- **Platform deadline:** 14 October 2026, 03:59 UTC / 05:59 CEST in Paris. Confirm the registered project's effective deadline.
-- **Public app:** pending
-- **Code repository:** pending
-- **Demo video:** pending
-- **Pitch video:** pending
-- **Judge access instructions:** pending
+The [official Rules v3](https://hackathon.monad.xyz/api/v1/policies/current) require licensed public GitHub source, build-window history, attribution, AI-tool disclosure, Monad deployment evidence and a public demo of at most three minutes. Follow these rules despite the marketing FAQ's more permissive open-source wording. See [requirements](hackathon_requirements.md).
 
-Requirements and source links: [hackathon requirements](hackathon_requirements.md).
+## Description
 
-The [official Rules v3](https://hackathon.monad.xyz/api/v1/policies/current) require a public GitHub repository under an OSI-approved license, build-window commit history, attribution, disclosure of AI coding tools, a Monad mainnet/testnet deployment, and a public demo of at most 3 minutes. Follow these rules despite the marketing FAQ's more permissive open-source statement.
+A trader can set limits yet still face mixed evidence about changing exposure. Aegis puts the assessment, policy result and executable trade terms together.
 
-## Problem and product
+It reads Kuru's MON/USDC market on Monad, calculates statistics in code and asks Jev typed questions about action, regime and risk when inference is approved. Probabilities reveal uncertainty; an independent gate checks the user's limits. A permitted protective sale is simulated and prepared for wallet review. The execution record checks the actual transaction, USDC output and refreshed balances.
 
-A trader can define a position limit, but an automated strategy still needs to decide whether current evidence supports adding inventory, reducing exposure, waiting, or cancelling resting orders. Market information is incomplete and contradictory; confidence needs to influence behavior before a trade is requested.
+Replay makes policy failures repeatable with synthetic data and paper fills. Live buys, resting-order cancellation and Perpl hedging are not implemented. The signed sale and response through the new Jev gateway are still pending, so update this description with recorded proof before publishing.
 
-Aegis puts that uncertainty beside executable policy. Deterministic code calculates market statistics and checks user constraints. The official Jev adapter evaluates compact market and portfolio state using typed Choice and Noul questions when paid inference is approved and enabled. Its probabilities inform a bounded proposal. The application blocks proposals that violate policy and can prepare a protective native MON sale for the user's wallet. Receipt/transaction checks, delivered USDC and refreshed balances complete the implemented execution record; actual signed execution and an official paid response remain pending proof.
+## Evidence
 
-The core MVP is one market and one honest transaction workflow. Replay provides reproducible stress scenarios; live trading uses real chain state and the user's actual wallet. A replay action never becomes a blockchain transaction merely because it appears in the activity feed.
+| Component             | Current evidence                                                        | Still needed                                                          |
+| --------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Policy/replay         | Tests/build/browser checks passed, including oversized-action rejection | Final recording of the blocked proposal                               |
+| Monad/Kuru            | Real market/balance reads; sale simulation and gas estimation passed    | Signed transaction, matched receipt and delivered USDC                |
+| Jev                   | Official adapter/parser tests; key configured, paid service disabled    | Approved response with model, timing, source and probabilities        |
+| PolicyGuard           | Solidity 0.8.30 compilation and local EVM tests passed                  | Monad deployment and guarded call before claiming onchain enforcement |
+| Perpl                 | Not integrated; replay hedge only                                       | Actual authenticated order and reconciliation                         |
+| Envio                 | Local journal only                                                      | Indexer/query output used by the product                              |
+| MetaMask Agent Wallet | Not integrated                                                          | Real plugin manifest/commands/host integration                        |
 
-## Why these components matter
+Detailed measurements and the baseline API-request caveat are in [verification](verification.md). Application controls are not an audited contract mandate.
 
-**Monad:** Kuru's onchain market gives the product a real venue to read and execute against. Responsive reads, order operations, and receipt reconciliation demonstrate the value of fast settlement. Report measured application timing separately from network performance claims.
+## Demo and bounty
 
-**Jev:** The model resolves bounded ambiguity rather than calculating arithmetic or inventing unrestricted trades. Action, regime, and risk probabilities expose disagreement. Official model confidence, application entropy, and probability margin are labeled separately. Invalid, unavailable, or uncertain inference cannot silently become a high-confidence live decision.
+Follow the [demo script](demo_script.md): live source/balances and limits, approved Jev assessment, protective sale review/signing, matched receipt/output, then replay's rejected increase. Show source and uncertainty at the point of action. If only preparation succeeds, describe it as simulation rather than verified execution.
 
-**Deterministic policy:** Exposure, loss, size, liquidity, pause, stale-data, and supported-action checks run independently of model recommendations. Wallet approval remains the authorization boundary for live execution. Application checks are not an audited smart-contract guarantee.
+Kuru's consumer-trading bounty is the nearest candidate. Its full criteria require authenticated platform review. Perpl analytics needs actual Perpl data, Envio requires substantive indexing, and MetaMask requires the real Agent Wallet plugin. MON/USDC controls do not establish a new-market bounty.
 
-## Integration evidence
+## Before publishing
 
-| Component | Submission-safe statement | Proof required |
-| --- | --- | --- |
-| Risk and replay engine | Local deterministic controls, heuristic replay and paper accounting; 128 tests/build passed and browser oversized-proposal rejection verified. | Preserve final verification output and recorded blocked proposal. |
-| Monad | Mainnet chain and Kuru contract reads verified during development; no signed transaction yet. | Preserve current chain/read/bytecode evidence and an actual approved receipt. |
-| Kuru | Real pinned-block market/AMM depth and wallet balances; native MON sale calldata simulation and gas estimation succeeded read-only from a funded public account. Wallet/receipt path implemented. | Actual signed transaction and verified output. Resting orders/history are not indexed. |
-| TypeSafe Jev | Official adapter and parser tests pass; key configured but paid service disabled pending credit authorization. | Redacted official response with model, source, timing, probabilities. |
-| Perpl | Hedging is an extension; replay hedges are simulated. | Documented authenticated live order and position reconciliation before claiming execution. |
-| Envio | Local audit records are not Envio indexing. | Authenticated event queries/indexer output used in the main workflow. |
-| MetaMask Agent Wallet | An extension connection or local session key is not an Agent Wallet plugin. | Real `mm` plugin manifest, commands, and host integration. |
-| PolicyGuard | Solidity 0.8.30 compilation and 13 local EVM tests passed. Source is separate from the direct wallet flow; no Monad deployment/audit. | Deployment address/bytecode and actual guarded call before claiming onchain enforcement. |
+- [ ] Confirm registered-project rules, eligibility, track/bounty and deadline.
+- [ ] Publish complete licensed source, attribution and actual build-window history.
+- [ ] Preserve pre-existing-work and AI-tool disclosures; establish that the substantial majority of submitted work is new.
+- [x] Deploy and verify the public app with paid inference hard-disabled and session-only journal storage.
+- [ ] Sign one approved Kuru sale and save its matching receipt, output and balances.
+- [ ] Capture an approved response through the new Jev gateway.
+- [ ] Record blocked proposals, uncertainty, pause, stale data and failures.
+- [x] Document F: setup/build/tests and verify them without paid API calls.
+- [ ] Check every integration, latency, audit and performance claim against evidence.
+- [ ] Record an actual-operation demo of at most three minutes.
+- [ ] Add app/code/video/access links and complete sponsor questions.
 
-Update rows only after verification. None of the optional integration rows currently establishes bounty qualification.
+## Pitch
 
-## Demo sequence to record
+Aegis helps MON/USDC traders make a decision they can inspect before signing. It reads Kuru on Monad, calculates risk in code and uses Jev to assess uncertain evidence. The user's limits can block a proposal regardless of its probability. A permitted protective sale shows exact terms for wallet review, and its receipt connects the decision to the chain result.
 
-1. Select live mode and verify the configured Kuru MON/USDC market address and chain. Mainnet observation is the default; testnet execution needs current usable liquidity.
-2. Connect the wallet; show balances, venue state, and hard policy settings.
-3. Show the market source and freshness. Request a Jev decision only when API usage is authorized.
-4. Show probabilities, source, model identity, uncertainty measures, and the policy result.
-5. Prepare a protective native MON sale within current minimum size and policy limits. Simulate exact calldata, show wallet review, then have the user approve the specific transaction and gas.
-6. Show the actual transaction hash, matching receipt/transaction, delivered USDC and refreshed balances. A submitted transaction is not a filled order.
-7. Switch to explicitly labeled replay for a repeatable oversized proposal. Show the failed check and no wallet request.
-8. Demonstrate pause and stale-data rejection; explain what is supported and what remains an extension.
-
-If step 5 cannot be completed, report the app as having a prepared transaction path, not verified execution. A complete competition entry still needs an actual working end-to-end demonstration.
-
-## Bounty positioning
-
-Kuru's consumer trading opportunity is the nearest candidate for this MVP. Perpl analytics/risk is a plausible extension only when actual Perpl data powers the product. Envio requires substantive indexing. MetaMask's plugin opportunity requires the real Agent Wallet plugin architecture. New Kuru assets/markets is not established by a MON/USDC trading tool. Full sponsor criteria and track eligibility remain pending authenticated platform review. See the sourced matrix in [requirements](hackathon_requirements.md).
-
-## Final checks before publishing
-
-- [ ] Confirm registered-project rules, eligibility, selected primary track, and effective deadline.
-- [ ] Publish complete source on GitHub under an OSI-approved license with attribution and build-window commit history.
-- [ ] Identify pre-existing components and disclose AI coding-tool use in the README; verify that the substantial majority of submitted work is new.
-- [ ] Deploy a public app with safe server configuration and no client-side secrets.
-- [ ] Complete one actual wallet-approved Kuru action and preserve its receipt/venue evidence.
-- [ ] Capture a real authorized Jev response; label fallback and replay correctly.
-- [ ] Record blocked proposal, uncertainty, stale data, pause, and failure behavior.
-- [x] Finish reproducible setup/build/test instructions under the F: storage policy; 128 tests and TypeScript/Vite build passed without paid API calls.
-- [ ] Remove every unverified integration, audit, latency, and profitability claim.
-- [ ] Record an actual-operation demo of at most 3 minutes showing Monad interactions.
-- [ ] Add repository, app, demo, pitch, and access links; complete sponsor-specific questions.
-
-## Pitch draft
-
-Aegis helps a trader act under uncertainty without giving a model unrestricted control of the wallet. It reads a real Kuru market on Monad, calculates risk in code, and integrates Jev for bounded probabilities over permitted actions. The policy gate either blocks a proposal or prepares a protective MON sale the user can review. The execution record connects evidence, uncertainty, user limits and a verified chain result. The planned demonstration includes a real approved action and an oversized proposal stopped before a wallet request; record and link that proof before submitting this pitch.
+The planned demo shows one approved sale and one oversized proposal blocked before a wallet request. Add the recorded proof before submitting this pitch.

@@ -3,11 +3,30 @@ import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { mkdirSync, writeFileSync } from 'node:fs';
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
-const paths = { project: root, temporary: tmpdir(), npm: process.env.npm_config_cache || process.env.NPM_CONFIG_CACHE, nodeCompileCache: process.env.NODE_COMPILE_CACHE, browserBinaries: process.env.PLAYWRIGHT_BROWSERS_PATH, cargo: process.env.CARGO_HOME, python: process.env.PYTHONPYCACHEPREFIX, appData: process.env.APPDATA, localAppData: process.env.LOCALAPPDATA, build: resolve(root, 'dist'), contractTools: resolve(root, '.local/contract-tools'), journal: resolve(root, '.local/artifacts/audit') };
+const paths = {
+  project: root,
+  temporary: tmpdir(),
+  npm: process.env.npm_config_cache || process.env.NPM_CONFIG_CACHE,
+  nodeCompileCache: process.env.NODE_COMPILE_CACHE,
+  browserBinaries: process.env.PLAYWRIGHT_BROWSERS_PATH,
+  cargo: process.env.CARGO_HOME,
+  python: process.env.PYTHONPYCACHEPREFIX,
+  appData: process.env.APPDATA,
+  localAppData: process.env.LOCALAPPDATA,
+  build: resolve(root, 'dist'),
+  contractTools: resolve(root, '.local/contract-tools'),
+  journal: resolve(root, '.local/artifacts/audit'),
+};
 const violations = Object.entries(paths).filter(([, value]) => value && /^c:[\\/]/i.test(value));
 if (/^c:[\\/]/i.test(root)) throw new Error('Project directory must stay off C:');
-const output = resolve(root, '.local/artifacts'); mkdirSync(output, { recursive: true });
-const report = { observedAt: new Date().toISOString(), paths, violations, scope: 'Process environment and explicit project outputs; not an OS-wide filesystem trace.' };
+const output = resolve(root, '.local/artifacts');
+mkdirSync(output, { recursive: true });
+const report = {
+  observedAt: new Date().toISOString(),
+  paths,
+  violations,
+  scope: 'Process environment and explicit project outputs; not an OS-wide filesystem trace.',
+};
 writeFileSync(resolve(output, 'storage-audit.json'), JSON.stringify(report, null, 2));
 console.log(JSON.stringify(report, null, 2));
 if (violations.length) process.exitCode = 1;

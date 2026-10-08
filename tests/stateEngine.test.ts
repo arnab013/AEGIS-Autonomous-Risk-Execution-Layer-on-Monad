@@ -7,16 +7,29 @@ import { REPLAY_SCENARIOS } from '../src/data/scenarios.ts';
 const epoch = Date.parse('2026-10-08T00:00:00Z');
 function replay(index: number) {
   const scenario = REPLAY_SCENARIOS[index];
-  const engine = new StateEngine(scenario.initial_position, undefined, undefined, { now: () => epoch + 2000 });
+  const engine = new StateEngine(scenario.initial_position, undefined, undefined, {
+    now: () => epoch + 2000,
+  });
   engine.orders.open_orders = structuredClone(scenario.initial_orders);
-  for (const tick of scenario.ticks) engine.updateMarketState(tick.bids, tick.asks, tick.aggressive_buy_flow, tick.aggressive_sell_flow, epoch + tick.timestamp_offset_ms);
+  for (const tick of scenario.ticks)
+    engine.updateMarketState(
+      tick.bids,
+      tick.asks,
+      tick.aggressive_buy_flow,
+      tick.aggressive_sell_flow,
+      epoch + tick.timestamp_offset_ms
+    );
   return engine;
 }
 
 function forcedPolicy(action: 'increase_position' | 'reduce_position' | 'hedge' | 'hold') {
   const client = new JevClient({ mode: 'simulated' });
   const original = client.evaluate.bind(client);
-  vi.spyOn(client, 'evaluate').mockImplementation(async payload => ({ ...(await original(payload)), selected_action: action, abstain_flag: false }));
+  vi.spyOn(client, 'evaluate').mockImplementation(async (payload) => ({
+    ...(await original(payload)),
+    selected_action: action,
+    abstain_flag: false,
+  }));
   return new JevPolicyEngine(client);
 }
 
@@ -44,7 +57,9 @@ describe('Deterministic replay and an honest paper ledger', () => {
     expect(cycle.paperExecution?.notionalUsd).toBeCloseTo(250);
     expect(cycle.paperExecution?.price).toBe(engine.market.asks[0].price);
     expect(engine.position.usdc_balance).toBeCloseTo(cash - 250);
-    expect(engine.position.spot_balance_mon).toBeCloseTo(tokens + 250 / engine.market.asks[0].price);
+    expect(engine.position.spot_balance_mon).toBeCloseTo(
+      tokens + 250 / engine.market.asks[0].price
+    );
     expect(cycle.txHash).toBeUndefined();
     expect(cycle.auditEvent.transaction_hash).toBeUndefined();
     expect(cycle.auditEvent.execution_mode).toBe('paper');
@@ -73,21 +88,27 @@ describe('Deterministic replay and an honest paper ledger', () => {
 
   it('a permitted paper hedge uses the approved clip, cannot overwrite previous hedges and creates no receipt', async () => {
     const engine = replay(3);
-    engine.updateMarketState([{ price: 3.928, size: 1900 }], [{ price: 3.932, size: 9200 }], 600, 14500, epoch + 3000);
+    engine.updateMarketState(
+      [{ price: 3.928, size: 1900 }],
+      [{ price: 3.932, size: 9200 }],
+      600,
+      14500,
+      epoch + 3000
+    );
     engine.jevPolicy = forcedPolicy('hedge');
     const before = engine.position.net_delta;
     const cycle = await engine.step(250);
     expect(cycle.riskCheck.allowed).toBe(true);
     expect(cycle.executedAction).toBe('hedge');
     expect(cycle.paperExecution?.notionalUsd).toBeCloseTo(250);
-    expect(Math.abs(engine.position.perp_exposure_usd)).toBeCloseTo(250 / 3.928 * 3.93);
+    expect(Math.abs(engine.position.perp_exposure_usd)).toBeCloseTo((250 / 3.928) * 3.93);
     expect(engine.position.net_delta).toBeLessThan(before);
     expect(cycle.paperExecution?.assumptions).toContain('no Perpl fill');
     expect(cycle.txHash).toBeUndefined();
     engine.updateMarketState(engine.market.bids, engine.market.asks, 600, 14500, epoch + 6000);
     const second = await engine.step(250);
     expect(second.executedAction).toBe('hedge');
-    expect(Math.abs(engine.position.perp_exposure_usd)).toBeCloseTo(500 / 3.928 * 3.93);
+    expect(Math.abs(engine.position.perp_exposure_usd)).toBeCloseTo((500 / 3.928) * 3.93);
   });
 
   it('the position cap overrides a confident bullish model proposal', async () => {
@@ -96,7 +117,7 @@ describe('Deterministic replay and an honest paper ledger', () => {
     const cycle = await engine.step(250);
     expect(cycle.jevDecision.selected_action).toBe('increase_position');
     expect(cycle.riskCheck.allowed).toBe(false);
-    expect(cycle.riskCheck.violations.some(v => v.includes('breach max limit'))).toBe(true);
+    expect(cycle.riskCheck.violations.some((v) => v.includes('breach max limit'))).toBe(true);
     expect(cycle.executedAction).toBe('hold');
     expect(cycle.txHash).toBeUndefined();
     expect(engine.position).toEqual(before);
@@ -159,8 +180,13 @@ describe('Deterministic replay and an honest paper ledger', () => {
     const engine = replay(1);
     const realEvaluate = engine.jevPolicy.evaluatePolicy.bind(engine.jevPolicy);
     let resume!: () => void;
-    const pending = new Promise<void>(resolve => { resume = resolve; });
-    vi.spyOn(engine.jevPolicy, 'evaluatePolicy').mockImplementation(async (...args) => { await pending; return realEvaluate(...args); });
+    const pending = new Promise<void>((resolve) => {
+      resume = resolve;
+    });
+    vi.spyOn(engine.jevPolicy, 'evaluatePolicy').mockImplementation(async (...args) => {
+      await pending;
+      return realEvaluate(...args);
+    });
     const first = engine.step();
     await expect(engine.step()).rejects.toThrow('already in flight');
     engine.policy.is_paused = true;
@@ -173,7 +199,8 @@ describe('Deterministic replay and an honest paper ledger', () => {
 
   it('time windows use timestamps and discard drift that falls outside the named window', () => {
     const engine = new StateEngine();
-    const book = (price: number) => [[{ price: price - 0.001, size: 1000 }], [{ price: price + 0.001, size: 1000 }]] as const;
+    const book = (price: number) =>
+      [[{ price: price - 0.001, size: 1000 }], [{ price: price + 0.001, size: 1000 }]] as const;
     const a = book(4);
     engine.updateMarketState([...a[0]], [...a[1]], 0, 0, epoch);
     const b = book(4.1);
@@ -187,9 +214,15 @@ describe('Deterministic replay and an honest paper ledger', () => {
   it('invalid, crossed and out-of-order books are rejected without corrupting state', () => {
     const engine = replay(0);
     const before = structuredClone(engine.market);
-    expect(() => engine.updateMarketState([{ price: 0, size: 1000 }], [{ price: 4, size: 1000 }])).toThrow('positive order book');
-    expect(() => engine.updateMarketState([{ price: 5, size: 1000 }], [{ price: 4, size: 1000 }])).toThrow('Crossed');
-    expect(() => engine.updateMarketState(before.bids, before.asks, 0, 0, epoch - 1000)).toThrow('Out-of-order');
+    expect(() =>
+      engine.updateMarketState([{ price: 0, size: 1000 }], [{ price: 4, size: 1000 }])
+    ).toThrow('positive order book');
+    expect(() =>
+      engine.updateMarketState([{ price: 5, size: 1000 }], [{ price: 4, size: 1000 }])
+    ).toThrow('Crossed');
+    expect(() => engine.updateMarketState(before.bids, before.asks, 0, 0, epoch - 1000)).toThrow(
+      'Out-of-order'
+    );
     expect(engine.market).toEqual(before);
   });
 });

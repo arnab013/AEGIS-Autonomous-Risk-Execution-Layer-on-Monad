@@ -1,30 +1,29 @@
 # Aegis
 
-A probabilistic risk copilot for MON/USDC trading on Monad. Aegis combines real Kuru market data, editable trading limits, bounded Jev decisions, and a wallet-reviewed protective MON sale.
+Aegis is a MON/USDC trading terminal on Monad. It reads Kuru's market, checks the user's trading limits, and uses Jev to assess uncertain market conditions. Its live trading path prepares a protective MON sale for review in the user's wallet.
 
-The product answers a practical question: **does the current evidence justify changing exposure, and does the proposed action satisfy my mandate?** The model proposes; deterministic code checks; the user controls signing.
+Open the [live app](https://aegis-risk-terminal.himaloy2608.workers.dev). Market reads, wallet balances, sale simulation and replay work without a login. Paid Jev inference is disabled on this public deployment.
 
-## What works and what remains
+## Current status
 
-| Capability | Current status |
-| --- | --- |
-| Kuru / Monad market reads | Real contract reads: pinned block, market parameters, packed CLOB and reconstructed AMM depth. Mainnet two-sided reads verified during development. |
-| Live wallet balances | MON and USDC read from chain for a connected account. |
-| Protective native MON sale | Real mainnet calldata simulation and gas estimation succeeded using a funded public account. Minimum output, wallet submission and receipt tracking implemented; no transaction has been signed in this session. |
-| Jev | Official System One request/response integration through a server proxy. Paid inference disabled by default; live model proof pending authorization. |
-| Replay | Five synthetic scenarios, deterministic heuristic probabilities and book-based paper fills. No fabricated transaction hashes. |
-| Risk checks | Input validity, mandate, position, liquidity, slippage and other constraints; oversized proposals can be rejected before execution. |
-| Audit | Project-local JSONL journal with a SHA-256 hash chain and visible decision evidence. It is not Envio indexing or an onchain attestation. |
-| Perpl / MetaMask Agent Wallet | Not integrated. Live hedging and delegated autonomy unavailable. |
-| PolicyGuard | Compiled and exercised in a local EVM; separate from the wallet path. No Monad deployment or security audit is claimed. |
+| Feature                      | Status                                                                                                                                                           |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Kuru market and wallet reads | Verified on mainnet, including orderbook/AMM depth and MON/USDC balances                                                                                         |
+| Protective MON sale          | Real calldata simulation and gas estimation passed; wallet submission and receipt reconciliation are implemented but have not been exercised with a signed trade |
+| Jev                          | Official server-side adapter and validation implemented; key configured, paid inference disabled pending credit approval                                         |
+| Replay                       | Five synthetic scenarios with heuristic probabilities and paper accounting                                                                                       |
+| Policy checks                | Editable limits, liquidity/slippage checks, stale-data rejection and blocked proposals                                                                           |
+| Journal                      | Persistent local SHA-256 chain; the hosted app keeps a browser-session journal with a copy/export control                                                        |
+| Hosting                      | Cloudflare Worker at a free workers.dev subdomain; public browser and mainnet simulation checks passed                                                           |
+| PolicyGuard                  | Compiled and tested in a local EVM; separate from direct wallet sales, with no Monad deployment or security audit                                                |
 
-Live operation observes mainnet by default. Switching to testnet uses the documented testnet market, which lacked bids during development and is rejected when it is not a valid two-sided market. Data availability changes: the runtime checks the current book rather than inventing liquidity.
+Perpl, Envio indexing and the MetaMask Agent Wallet plugin are not integrated. Live historical losses, resting orders and external positions are unavailable, so unattended trading is disabled.
 
-## Run locally on Windows
+The [verification report](docs/verification.md) records test, build, browser and RPC results. Signed execution, validation of the new Jev gateway against the paid service and the submission video are still outstanding. The selected GitHub repository is configured as origin; publication is waiting for connector access.
 
-Use **Node.js 22.14 or later**. TypeScript source is loaded by the server using Node's strip-types support.
+## Run locally
 
-All project writes must stay under `F:\Projects\Monad Metropolis`. In a PowerShell session:
+Use Node.js 22.14 or later. All project writes must stay under F:\Projects\Monad Metropolis.
 
 ```powershell
 Set-Location 'F:\Projects\Monad Metropolis'
@@ -34,7 +33,9 @@ if (!(Test-Path -LiteralPath '.env')) { Copy-Item -LiteralPath '.env.example' -D
 npm run dev
 ```
 
-Existing dependencies can be reused; installation is unnecessary when `node_modules` matches the lockfile. Never overwrite an existing `.env`. Open [localhost:3000](http://localhost:3000). Development starts Vite on 3000 and the API on 3001.
+Skip npm ci if node_modules already matches the lockfile. Preserve an existing .env. Open [localhost:3000](http://localhost:3000); development runs Vite on port 3000 and the API on 3001.
+
+For contract tools, tests and a production build:
 
 ```powershell
 npm run setup:contracts
@@ -43,15 +44,9 @@ npm run build
 npm start
 ```
 
-Production startup serves the built app and API together on localhost:3000. `npm run preview` serves only the frontend and does not supply the API.
+Start serves the built app and API together on localhost:3000. Vite preview serves only the frontend. The environment script keeps caches and temporary files under .local; see the [storage policy](docs/local_storage_policy.md) before using other tools.
 
-Development verification on 8 October: **128 tests passed**, TypeScript/Vite build passed, and browser checks covered replay, a blocked oversized proposal, decision evidence, live onchain reads, inspection without paid inference and mobile overflow. Contract tests used compiled Solidity 0.8.30 in a local EVM. These checks do not establish a signed mainnet trade or a live paid Jev response.
-
-The storage script redirects command caches, temporary paths and user configuration into `.local`. Existing browser storage is outside this shell's control; do not download browsers or save project exports to C:. See [storage policy](docs/local_storage_policy.md).
-
-## Configuration
-
-`.env` is server-only and ignored by Git:
+## Configuration and use
 
 ```dotenv
 AEGIS_NETWORK=mainnet
@@ -59,35 +54,27 @@ TYPESAFE_API_KEY=
 JEV_ENABLE_LIVE=false
 ```
 
-Set `AEGIS_NETWORK=testnet` to target chain 10143 instead of mainnet 143. Restart the API after a configuration change. No private key or seed phrase is needed.
+The key stays on the server; never prefix it with VITE\_. The gateway uses jev-latest. Enable JEV_ENABLE_LIVE only after approving API-credit usage, and restart the API after changing configuration. The wallet flow needs no private key or seed phrase.
 
-After approving TypeSafe API-credit usage, set `JEV_ENABLE_LIVE=true` and provide `TYPESAFE_API_KEY`. The browser sends state to `/api/jev`; the server pins `jev-latest` and owns the official questions and authorization header. Never use a `VITE_` prefix for secrets.
+`npm run setup:typesafe` reads F:\Projects\jev_key.txt into the ignored server .env. The official TypeSafe skill is vendored under skills/typesafe-ai with its license. This setup does not make an inference request. The public Worker deliberately rejects paid inference until owner authentication and a persistent spending limit are implemented.
 
-## Use the product
+Start in Replay Lab and use Step or Play. Scenario 5 shows an increase blocked near the position cap. Scenario 4 shows a hedge proposal rejected when the stressed book fails the slippage and depth limits.
 
-Start in **Replay Lab**. Choose a scenario and press **Step** or **Play**. Scenario 5 shows a bullish proposal blocked near the position cap. Scenario 4 demonstrates a hedge proposal blocked by the default slippage limit; changing the mandate can permit only a paper hedge. Model output in replay is explicitly heuristic.
+Live mode defaults to mainnet. Inspect the market and connected-wallet holdings, then prepare a MON reduction. The proposal shows amount, expected/minimum USDC output, target, slippage and expiry. Confirm in wallet requests signing. Keep MON for gas and fit the contract's current minimum/precision as well as your limits. The observed mainnet minimum was about 200 MON; the app reads it from the contract.
 
-In **Live**, inspect current Kuru data and wallet balances. With paid inference disabled, the decision source remains unavailable/fallback. A user can explicitly prepare a protective MON reduction; the UI checks policy and the server simulates the exact Kuru market call. The proposal shows amount, estimated/minimum USDC output, market address, slippage and expiry. Only **Confirm in wallet** requests a transaction.
+AEGIS_NETWORK=testnet selects chain 10143 instead of 143. The documented testnet market lacked bids during development and fails the two-sided-book check when liquidity is unavailable.
 
-Market minimum size and precision come from the contract. Mainnet's observed minimum was approximately 200 MON during development; the UI reports the current value. Choose a clip within your order cap, available inventory and liquidity limits, and retain MON for gas. Preparation may legitimately fail.
+## Competition and provenance
 
-Historical PnL, resting Kuru orders and perpetual positions are not indexed in live mode. New-risk autonomous execution remains unavailable. A successful receipt is recorded separately from submission, and balances refresh from chain.
+The [official rules](https://hackathon.monad.xyz/api/v1/policies/current) require public licensed GitHub source, build-window history, AI-tool disclosure, Monad deployment evidence and a demo of at most three minutes. The deadline is **14 October 2026, 05:59 CEST in Paris**. Detailed sponsor criteria still need review in the authenticated platform.
 
-## Product and submission evidence
+The supplied project already contained the React terminal, scenario fixtures, market/risk interfaces and placeholder integration clients. This work adds real Kuru reads and the reviewed sale path, server-side Jev transport/validation, paper accounting, stronger policy checks and source labels. Preserve the foundation's actual commit dates and identify it as pre-existing work in the submission.
 
-This retains the useful terminal and risk concept while replacing simulated integration claims with a narrow real execution path. Real read-only simulation is verified; the configured TypeSafe key remains behind disabled paid inference. Public GitHub publication, public deployment, an authorized Jev response, a real approved Kuru transaction and a public demo still need evidence.
-
-The [official competition rules](https://hackathon.monad.xyz/api/v1/policies/current) require public GitHub source under an open-source license, build-window commit history, AI-tool disclosure, Monad integration and a demo of at most 3 minutes. Deadline: **14 October 2026, 05:59 CEST in Paris**. Full sponsor qualification remains pending authenticated platform review.
-
-**Build provenance:** the pre-existing foundation supplied with this project included the React terminal, scenario fixtures, market/risk engine interfaces and placeholder integration clients. Current work adds real Kuru contract reads and reviewed execution, server-only Jev transport/validation, explicit paper accounting, stronger policy checks and honest provenance labels. The original foundation predates this development session; preserve and disclose its actual commit dates before submission.
-
-**AI-tool disclosure:** OpenAI Codex assisted with research, implementation, tests and documentation. External React, Vite, TypeScript, viem, Vitest and supporting libraries retain their own licenses; see `package.json` and `package-lock.json`.
+OpenAI Codex assisted with research, implementation, tests and documentation. React, Vite, TypeScript, viem, Vitest and other dependencies retain their own licenses; see package.json and package-lock.json. Aegis uses the [MIT license](LICENSE). Trading performance and production security have not been established.
 
 ## Documentation
 
-- [MVP assessment](docs/mvp_assessment.md): product choice, competitive strengths and remaining work.
-- [Architecture](docs/architecture.md), [risk model](docs/risk_model.md), [Jev design](docs/jev_design.md).
-- [Demo script](docs/demo_script.md), [deployment](docs/deployment.md), [requirements](docs/hackathon_requirements.md), [submission](docs/submission.md).
-- [Local storage policy](docs/local_storage_policy.md), [verification report](docs/verification.md).
-
-Aegis code is released under the [MIT license](LICENSE). There is no profitability claim, production security audit or verified autonomous-trading guarantee.
+- [MVP assessment](docs/mvp_assessment.md) and [verification report](docs/verification.md)
+- [Architecture](docs/architecture.md), [risk model](docs/risk_model.md) and [Jev design](docs/jev_design.md)
+- [Deployment](docs/deployment.md) and [storage policy](docs/local_storage_policy.md)
+- [Competition requirements](docs/hackathon_requirements.md), [demo script](docs/demo_script.md) and [submission draft](docs/submission.md)

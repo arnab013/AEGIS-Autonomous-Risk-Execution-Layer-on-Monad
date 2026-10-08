@@ -1,58 +1,56 @@
 # Risk model and limits
 
-Aegis calculates market and portfolio statistics in code, uses probabilities for a bounded proposal, and independently checks whether the proposal satisfies the user's mandate. Wallet approval is the live signing boundary. These checks are application controls, not an audited global wallet restriction.
+The policy gate checks a proposed action independently of model probabilities. In Live, the user still reviews and signs the transaction. Application checks cover the workflow in Aegis; they do not restrict every transaction the wallet can make.
 
-## Market calculations
+## Calculations
 
-Mid price is the mean of best bid and ask. Spread is (ask - bid) / mid × 10,000. Depth sums price × size on the selected side within 25 basis points of mid. Book imbalance is (bid depth - ask depth) / (bid depth + ask depth).
+Mid price is the mean of best bid and ask. Spread is (ask − bid) / mid × 10,000. Depth sums price × size within 25 bps of mid on the selected side. Imbalance is (bid depth − ask depth) / total depth.
 
-Returns are logarithmic observed price changes. One- and five-minute volatility are sample standard deviations of observed log returns in those windows, without annualization. At startup, history can be too short to support a meaningful volatility assessment.
+Returns are logarithmic price changes. One- and five-minute volatility are sample standard deviations of observed returns, without annualization. Early observations may provide too little history.
 
-The compatibility field volatility_percentile is scaled as min(100, round(volatility_1m / 0.035 × 100)). The interface labels it a stress index. No historical reference distribution exists; it is not an empirical percentile.
+The compatibility field volatility_percentile is min(100, round(volatility_1m / 0.035 × 100)). It is displayed as a stress index because there is no historical distribution supporting a percentile.
 
-A proposed clip walks executable levels, calculating filled size, average price and slippage from mid. An incomplete fill fails the slippage check. Snapshot liquidity is evidence at observation time, not a guarantee of future availability.
+A book walk estimates filled size, average price and slippage for the proposed USD clip. Incomplete fills fail the slippage check. The snapshot cannot guarantee liquidity at execution time.
 
-## Deterministic gate
+## Checks
 
-| Check | Relevant behavior |
-| --- | --- |
-| Valid inputs | Known action; finite policy, positions, orders and positive trade size |
-| Mandate | Permitted action, allowed venue and pair assets |
-| Fresh market | Positive two-sided uncrossed book, no more than 15 seconds old |
-| Position | Existing spot plus supplied pending buys and new clip must fit cap for purchases |
-| Leverage | Gross exposure against conservative equity; positive unverified PnL ignored |
-| Loss | max(0, -(realized today + unrealized PnL)) below loss cap for new risk |
-| Size | Proposed USD clip at or below order cap |
-| Cash / inventory | Supplied pending purchases/sales reserve available balances |
-| Hedge | Proposed short cannot exceed current positive delta |
-| Liquidity | Selected-side 25 bps depth at or above minimum |
-| Slippage | Complete book walk and impact at or below cap |
-| Orders / cooldown | Supplied open orders and last confirmed execution limit new risk |
+| Check           | Behavior                                                                       |
+| --------------- | ------------------------------------------------------------------------------ |
+| Inputs          | Known action, finite values and positive trade size                            |
+| Mandate         | Permitted action, venue and pair assets                                        |
+| Freshness       | Positive two-sided uncrossed book, at most 15 seconds old                      |
+| Position        | Existing spot, supplied pending buys and new purchase fit the cap              |
+| Leverage        | Gross exposure divided by conservative equity; positive unverified PnL ignored |
+| Loss            | max(0, −(realized today + unrealized PnL)) below the loss cap for new risk     |
+| Size            | USD clip fits the order cap                                                    |
+| Cash/inventory  | Supplied pending buys/sells reserve balances                                   |
+| Hedge           | Short does not exceed positive delta                                           |
+| Liquidity       | Selected-side 25 bps depth meets the minimum                                   |
+| Slippage        | Complete book walk and impact within the cap                                   |
+| Orders/cooldown | Supplied open orders and last confirmed execution limit new risk               |
 
-Defaults are $2,000 position, 2× leverage, $400 daily loss, $300 order cap, 25 bps slippage, $1,500 minimum depth, five open orders, 60-second stale-order timeout and two-second cooldown. These are demo defaults, not calibrated advice. Six limits are editable in the terminal; other policy fields remain available to the engine.
+Defaults are $2,000 position, 2× leverage, $400 daily loss, $300 order size, 25 bps slippage, $1,500 depth, five open orders, a 60-second stale-order timeout and two-second cooldown. These are demo values, not calibrated trading recommendations. Six limits are editable in the UI.
 
-The core pause check stops new risk while allowing protective reductions and cancellations. The terminal's pause also disables transaction preparation/signing. Pause cannot retract a transaction already submitted or cancel a pending transaction by itself.
+Core pause stops new risk while allowing protective reductions/cancellations. The terminal also disables preparation/signing while paused. Pause cannot retract an already submitted transaction.
 
-The engine rechecks state consistency after asynchronous inference. It records a cooldown only after an actual paper fill or confirmed execution. A rejected proposal does not consume imaginary trading capacity.
+The engine checks for changes during inference. Cooldown starts after a paper fill or confirmed execution, not after a rejected proposal.
 
-## Paper accounting
+## Replay accounting
 
-Replay uses a separate ledger with synthetic observations. A spot purchase debits cash and adds inventory and cost basis; a sale credits cash, removes inventory and recognizes basis-based PnL. Marking reflects changing book mid price. Paper cancellation removes supplied resting orders.
+Purchases debit paper cash and add inventory/basis. Sales credit cash, remove inventory and recognize PnL against basis. Positions are marked at book mid; paper cancellation removes fixture orders.
 
-A paper hedge is an indicative protective short using the spot book reference and bounded clip. It updates short size and delta. It is not a Perpl fill and omits actual collateral, funding, fees, liquidations, competing orders and market latency. Paper records have explicit assumptions and never fake transaction hashes.
+The short hedge uses a spot reference and updates paper short size/delta. It omits actual Perpl collateral, funding, fees, liquidation, competing orders and latency. Paper records contain assumptions and no transaction hashes.
 
-Replay scenario 4 initially blocks its hedge under the default slippage cap. Raising the cap is an explicit user mandate change; it may permit a bounded paper hedge when every other check passes. It does not establish a fully neutralized real portfolio.
+Scenario 4 rejects its hedge under the default slippage and depth limits. The stressed bids sit outside the measured 25 bps depth window, so raising the slippage cap alone does not make the action executable. Its paper hedge uses spot prices and cannot demonstrate a real neutral portfolio.
 
-## Live protective sale
+## Live sale and authority
 
-The live path supports native MON sold for USDC through the configured Kuru market. The UI checks the current reduction clip. The adapter checks chain, bytecode, native/quote metadata, exact precision, market minimum/maximum size, simulation and gas before preparing a 30-second proposal.
+The Kuru adapter checks chain, bytecode, pair metadata, precision, size bounds, exact calldata simulation and gas. The prepared native MON sale expires after 30 seconds. Minimum USDC output is the stricter of quote tolerance and total slippage from observed mid. Submission rechecks proposal integrity, account/chain, current market and simulation; confirmation checks transaction, receipt and USDC transfers.
 
-Minimum output is the stricter of a quoted-output tolerance and total slippage from the observed midpoint. Submission checks proposal integrity, exact calldata and value, account/chain consistency, current price, market limits and a fresh simulation. Confirmation verifies the transaction and receipt; USDC transfer logs measure output. A timeout stays pending rather than becoming an invented failure or fill.
+Expiry and pause are application preflight checks. Kuru enforces minimum output and fill-or-kill but its direct sell call has no deadline. Reject a wallet prompt left open past expiry. Receipt timeout remains pending; investigate the original hash before resubmitting.
 
-Historical loss, resting orders and perpetual balances are not authoritative in live state. The application therefore does not offer unattended new-risk execution or promise that its live dashboard covers the entire wallet mandate. Wallet holdings also include gas inventory; sufficient MON for fees must remain.
+Historical losses, resting orders and perpetual positions are missing from live state. Unattended execution is disabled. Wallet MON includes gas inventory, so leave enough for fees.
 
-## Authority and remaining work
+Direct sales bypass PolicyGuard. That optional contract has native-unit budgets, pause and expiry, but no Monad deployment or independent audit. Its budgets are not USD loss/exposure limits; see [contract notes](../contracts/README.md).
 
-Direct wallet execution does not route through PolicyGuard. The optional contract restricts one native-MON sell path with native-unit spend budgets, pause and expiry. It compiled and passed local EVM tests but has no Monad deployment or security audit. Those budgets are not USD loss or portfolio limits. See [contract notes](../contracts/README.md).
-
-A browser owner can modify application code or transact elsewhere. The local journal has no independent onchain anchor. Before autonomy, index authoritative balances, fills, losses and resting orders; coordinate pending reservations; validate a narrowly scoped signer; and independently review custody and execution controls.
+Before autonomy, index balances, fills, losses and orders; coordinate pending reservations; restrict signing authority; and review custody/execution independently. The local journal also needs an external anchor if independent attestation is required.

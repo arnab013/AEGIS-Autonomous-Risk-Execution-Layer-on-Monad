@@ -1,63 +1,54 @@
 # Architecture
 
-Aegis has two explicit modes. Replay uses synthetic market fixtures, deterministic heuristic probabilities and a paper ledger. Live reads a real Kuru market, evaluates evidence on request, and supports a protective native MON sale reviewed in the user's browser wallet. Live inference never automatically submits a transaction.
+Replay and Live share the market calculations and policy gate. Replay uses synthetic fixtures, heuristic probabilities and a paper ledger. Live reads Kuru, requests Jev assessments when enabled, and prepares a protective MON sale for wallet review. A model decision does not submit a transaction.
 
-~~~mermaid
+```mermaid
 flowchart TD
-  RPC[Monad RPC and Kuru contracts] --> Gateway[Local Node gateway]
-  Gateway --> Live[Live market and wallet balances]
-  Fixtures[Synthetic replay fixtures] --> Math[Market statistics and risk]
+  RPC[Monad RPC and Kuru contracts] --> Gateway[Node gateway]
+  Gateway --> Live[Market and wallet state]
+  Fixtures[Replay fixtures] --> Math[Market and risk calculations]
   Live --> Math
-  Math --> State[Compact typed state]
-  State --> Model[Server-only Jev request]
-  Model --> Validate[Validate probabilities and uncertainty]
-  Validate --> Gate[Deterministic policy gate]
-  Gate --> Evidence[Decision evidence]
-  Evidence --> Journal[Project-local hash-chain journal]
-  Fixtures --> Paper[Paper ledger]
-  Gate --> Paper
-  User[User requests protective MON sale] --> Prepare[Policy check and exact simulation]
+  Math --> State[Compact state]
+  State --> Model[Server-side Jev request]
+  Model --> Validate[Response and uncertainty checks]
+  Validate --> Gate[Policy gate]
+  Gate --> Evidence[Decision record]
+  Evidence --> Journal[Local journal]
+  Gate --> Paper[Replay ledger]
+  User[User requests MON sale] --> Prepare[Policy check and simulation]
   Live --> Prepare
-  Prepare --> Review[Wallet review]
-  Review --> Chain[Actual submitted transaction]
+  Prepare --> Wallet[Wallet review]
+  Wallet --> Chain[Transaction]
   Chain --> Receipt[Receipt and USDC transfers]
   Receipt --> Live
-~~~
+```
 
-## Market and portfolio state
+## Reads and decisions
 
-The adapter verifies the chain and target bytecode, pins reads to one block, and checks the native MON/USDC market metadata. It decodes the packed orderbook and reconstructs Kuru AMM depth using the official SDK's integer arithmetic. A book must have positive, uncrossed bids and asks. Contract precision, minimum size and maximum size govern transaction encoding.
+The Kuru adapter verifies chain and deployed code, reads parameters at one block, decodes the packed orderbook and reconstructs AMM depth using the SDK's integer arithmetic. It requires positive, uncrossed bids and asks. Contract precision and size bounds govern encoding.
 
-The terminal polls market data approximately every three seconds; the gateway caches a snapshot for one second. This is an interactive trading copilot, not a measured high-frequency trading system. Report RPC round trip and receipt observation separately from network finality.
+Browser chain reads go through the same-origin /api/rpc endpoint. The server allows only approved read-only RPC methods and uses its configured chain; wallet signing stays with the EIP-1193 provider.
 
-The gateway defaults to mainnet, chain 143. The documented testnet market on chain 10143 lacked bids during development, so current invalid books fail rather than receiving substitute fixture data. Wallet reads retrieve native MON and USDC. Resting orders, historical realized loss, collateral and perpetual positions are not indexed. Live state prominently reports this incomplete coverage.
+The terminal polls every three seconds locally and every ten seconds on the hosted app; hidden tabs pause polling. The Node gateway caches reads for one second. Mainnet, chain 143, is the default. The documented testnet market on chain 10143 lacked bids during verification. Current measurements are in the [verification report](verification.md).
 
-A verified mainnet sample on 8 October came from block 111450170, with 23 bid levels, 30 ask levels and mid price 0.025843 USDC/MON. The observed snapshot read took 715 ms. This is one measured application sample; current price, depth and latency vary.
+Wallet reads cover MON and USDC. Historical loss, resting orders, perpetual positions and trade flow are not indexed. The terminal marks missing portfolio fields unavailable. The model receives incomplete live evidence; it cannot authorize unattended trading.
 
-## Decisions and deterministic checks
+The client compacts state; the server constructs fixed Choice and Noul questions and keeps the API key. Invalid or unavailable inference produces a labeled fallback. Before accepting a decision, the engine checks whether the assessed state has changed. The policy gate independently checks limits, inventory/cash, supplied pending orders, liquidity, slippage and freshness. See [Jev design](jev_design.md) and [risk model](risk_model.md).
 
-The client builds compact state; the server constructs fixed official Choice and Noul questions. API keys stay on the server. Paid inference is disabled unless explicitly enabled after credit usage is approved. A malformed or unavailable response produces a labeled safe fallback. Replay uses labeled heuristic output and makes no API call.
+Replay fills walk the fixture book and update cash, inventory, basis and PnL. Its short hedge is indicative and omits actual Perpl collateral, fees, funding and liquidation.
 
-The engine snapshots state for evaluation and checks that it has not changed before accepting the result. The deterministic gate separately checks policy, available inventory or cash, pending orders supplied to it, liquidity, slippage, freshness and other limits. Model probabilities cannot loosen a limit. See [Jev design](jev_design.md) and [risk model](risk_model.md).
+## Wallet execution
 
-Replay fills walk the synthetic book and update cash, inventory, basis and PnL. Its indicative short hedge uses the spot reference price; it does not model a Perpl margin account, funding or liquidation.
+Live execution supports a native MON market sale for USDC. Preparation reads fresh parameters, checks size/precision, simulates exact calldata and estimates gas. Minimum output covers both quote deterioration and total slippage from the observed midpoint.
 
-## Reviewed execution
+The proposal expires after 30 seconds. Before opening the wallet, submission checks account, chain, proposal integrity, current market and simulation. These are application checks: Kuru's direct sell ABI has no deadline, so a wallet prompt can remain open after expiry. Reject a stale prompt.
 
-Only an explicit protective MON sale is implemented in the live wallet flow. Preparation reads fresh market parameters, checks size precision, simulates exact Kuru calldata and estimates gas. The minimum USDC output enforces both quote deterioration and total slippage from observed mid price. The reviewed proposal expires after 30 seconds.
+A returned hash is recorded as submitted. Confirmation verifies the transaction and receipt; token transfers measure delivered USDC. Pending, reverted and confirmed states remain separate, and balances refresh from chain. Read-only simulation has passed; no trade has been signed in this session.
 
-Submission rechecks the account, chain, amount, proposal integrity, current market and simulation before requesting EIP-1193 wallet approval. A real hash is recorded as submitted. The receipt and matching transaction are checked before confirmation; token transfer logs measure delivered USDC. Reverted and pending/timeout outcomes remain distinct. Balances refresh from chain.
+## Journal, contracts and runtime
 
-No real wallet transaction has been signed during development. This is implemented execution awaiting authorized end-to-end proof.
+The gateway serializes JSONL writes under .local/artifacts/audit. SHA-256 links records; startup verifies the active journal and rotation anchor. The UI displays recent records, and export writes into the same directory. Someone controlling both journal and anchor can replace them, so this is a local integrity check rather than an independent attestation.
 
-Read-only mainnet execution verification on 8 October succeeded from a funded public account: a 200 MON sale simulated approximately 5.156 USDC output, with a 5.132807 USDC minimum under a total 50 bps cap, and gas estimation returned 297,208. No signature or chain state change occurred. These are dated observations, not fixed prices, executable promises or proof that the complete wallet UI has traded.
+PolicyGuard is a separate optional custody contract. It compiled with Solidity 0.8.30 and passed local EVM tests; it is not deployed on Monad or used by direct wallet sales. Perpl, Envio indexing and MetaMask Agent Wallet are not integrated.
 
-## Journal and optional components
-
-The gateway writes serialized JSONL records under the project F: directory. SHA-256 links each event to the previous record. On restart it verifies the active journal and rotation anchor; bounded records are exposed to the UI. Export writes to the same project artifact directory. The chain is local and unanchored: it detects inconsistent records relative to its retained anchor, but a writer controlling the journal and anchor can replace both.
-
-Perpl, Envio indexing and MetaMask Agent Wallet are not integrated. PolicyGuard is an optional custody contract separate from direct wallet execution. It compiled with Solidity 0.8.30 and passed local EVM tests; it has not been deployed to Monad or audited. Application checks do not establish an audited onchain mandate.
-
-## Runtime
-
-Development uses Vite on port 3000 and Node on 3001 with API proxying. Build/start serves the compiled frontend and API together on loopback port 3000. A static-only Vite preview cannot provide the API. See [deployment](deployment.md) for public-host work still required.
+Development runs Vite on 3000 and Node on 3001. Build/start serves the frontend and API together on loopback port 3000. The public Cloudflare Worker reuses the Kuru/Monad adapters and embeds the built static files. It hard-disables paid inference and keeps audit events in the browser session. See [deployment](deployment.md).

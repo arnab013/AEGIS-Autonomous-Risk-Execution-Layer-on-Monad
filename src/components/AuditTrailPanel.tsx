@@ -1,5 +1,3 @@
-// src/components/AuditTrailPanel.tsx - Envio-Indexed Verifiable Onchain Audit Trail
-
 import React from 'react';
 import { Database, ExternalLink, ShieldCheck, ShieldX } from './icons.tsx';
 import { AuditEvent } from '../types/index.ts';
@@ -7,9 +5,14 @@ import { AuditEvent } from '../types/index.ts';
 interface AuditTrailPanelProps {
   events: AuditEvent[];
   onExport?: () => void;
+  exportLabel?: string;
 }
 
-export const AuditTrailPanel: React.FC<AuditTrailPanelProps> = ({ events, onExport }) => {
+export const AuditTrailPanel: React.FC<AuditTrailPanelProps> = ({
+  events,
+  onExport,
+  exportLabel = 'Save JSON to project',
+}) => {
   return (
     <div className="terminal-card flex flex-col h-full overflow-hidden">
       <div className="terminal-header flex items-center justify-between">
@@ -20,7 +23,7 @@ export const AuditTrailPanel: React.FC<AuditTrailPanelProps> = ({ events, onExpo
           </span>
         </div>
         <span className="text-[11px] font-mono text-[#64748b]">
-          {events.length} EVENTS {onExport && <button onClick={onExport}>Save JSON to project</button>}
+          {events.length} EVENTS {onExport && <button onClick={onExport}>{exportLabel}</button>}
         </span>
       </div>
 
@@ -48,7 +51,8 @@ export const AuditTrailPanel: React.FC<AuditTrailPanelProps> = ({ events, onExpo
                 </td>
                 <td className="py-2 px-3">
                   <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-[#7b3fe4]/20 text-[#cbb2fe]">
-                    {evt.selected_action} ({(evt.confidence * 100).toFixed(0)}%) · {evt.user_initiated ? 'user' : evt.decision_source || 'policy'}
+                    {evt.selected_action} ({(evt.confidence * 100).toFixed(0)}%) ·{' '}
+                    {evt.user_initiated ? 'user' : evt.decision_source || 'policy'}
                   </span>
                 </td>
                 <td className="py-2 px-3 whitespace-nowrap">
@@ -73,7 +77,10 @@ export const AuditTrailPanel: React.FC<AuditTrailPanelProps> = ({ events, onExpo
                       rel="noreferrer"
                       className="text-[#a77df8] hover:underline flex items-center gap-1 font-semibold"
                     >
-                      <span>{evt.transaction_hash.slice(0, 6)}...{evt.transaction_hash.slice(-4)} · {evt.transaction_status || 'submitted'}</span>
+                      <span>
+                        {evt.transaction_hash.slice(0, 6)}...{evt.transaction_hash.slice(-4)} ·{' '}
+                        {evt.transaction_status || 'submitted'}
+                      </span>
                       <ExternalLink className="w-3 h-3" />
                     </a>
                   ) : (
