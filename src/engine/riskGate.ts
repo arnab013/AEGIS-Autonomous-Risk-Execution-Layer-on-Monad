@@ -32,7 +32,7 @@ export class HardRiskGate {
     const trades = ['increase_position', 'reduce_position', 'hedge'].includes(proposedAction);
     const newRisk = proposedAction === 'increase_position' || proposedAction === 'hedge';
     const check = (key: string, passed: boolean, message: string, applies = true) => {
-      checks[key] = { passed, message };
+      checks[key] = { passed, message, applies };
       if (applies && !passed) violations.push(message);
     };
     const positive = (v: number) => Number.isFinite(v) && v > 0;

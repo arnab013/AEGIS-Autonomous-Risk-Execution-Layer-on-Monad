@@ -2,7 +2,7 @@
 
 Aegis is a MON/USDC trading terminal on Monad. It reads Kuru's market, checks the user's trading limits, and uses Jev to assess uncertain market conditions. Its live trading path prepares a protective MON sale for review in the user's wallet.
 
-Open the [live app](https://aegis-risk-terminal.himaloy2608.workers.dev). Market reads, wallet balances, sale simulation and replay work without a login. Paid Jev inference is disabled on this public deployment.
+Open the [live app](https://aegis.himaloy2608.workers.dev). Market reads, wallet balances, sale simulation and replay work without a login. Paid Jev inference is disabled on this public deployment. The previous address remains compatible with already-open browser sessions and redirects page navigation to this shorter address.
 
 ## Current status
 
@@ -19,7 +19,7 @@ Open the [live app](https://aegis-risk-terminal.himaloy2608.workers.dev). Market
 
 Perpl, Envio indexing and the MetaMask Agent Wallet plugin are not integrated. Live historical losses, resting orders and external positions are unavailable, so unattended trading is disabled.
 
-The [verification report](docs/verification.md) records test, build, browser and RPC results. Signed execution, validation of the new Jev gateway against the paid service and the submission video are still outstanding. The selected GitHub repository is configured as origin; publication is waiting for connector access.
+The [verification report](docs/verification.md) records test, build, browser and RPC results. Signed execution, validation of the new Jev gateway against the paid service and the submission video are still outstanding. The selected GitHub repository is configured as origin. The redesign is developed on codex/aegis-risk-control-mvp; preserve the original history and build-window disclosures.
 
 ## Run locally
 
@@ -58,7 +58,7 @@ The key stays on the server; never prefix it with VITE\_. The gateway uses jev-l
 
 `npm run setup:typesafe` reads F:\Projects\jev_key.txt into the ignored server .env. The official TypeSafe skill is vendored under skills/typesafe-ai with its license. This setup does not make an inference request. The public Worker deliberately rejects paid inference until owner authentication and a persistent spending limit are implemented.
 
-Start in Replay Lab and use Step or Play. Scenario 5 shows an increase blocked near the position cap. Scenario 4 shows a hedge proposal rejected when the stressed book fails the slippage and depth limits.
+Start in Replay Mode and use Step or Play. Scenario 5 shows an increase blocked near the position cap. Scenario 4 shows a hedge proposal rejected when the stressed book fails the slippage and depth limits.
 
 Live mode defaults to mainnet. Inspect the market and connected-wallet holdings, then prepare a MON reduction. The proposal shows amount, expected/minimum USDC output, target, slippage and expiry. Confirm in wallet requests signing. Keep MON for gas and fit the contract's current minimum/precision as well as your limits. The observed mainnet minimum was about 200 MON; the app reads it from the contract.
 

@@ -1,6 +1,6 @@
 import { build } from 'esbuild';
 import { createHash } from 'node:crypto';
-import { readdirSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve, relative, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -29,24 +29,45 @@ for (const file of readdirSync(directory, { recursive: true, withFileTypes: true
     ? { contentType, text: content.toString('utf8') }
     : { contentType, base64: content.toString('base64') };
 }
-// A single module can be published through the managed connector without exporting an upload token.
-await build({
-  stdin: {
-    contents: `import worker from './cloudflare/worker.ts';
+const legacyAssetPath = resolve(output, 'legacy-assets.json');
+const previousAssets = existsSync(legacyAssetPath)
+  ? JSON.parse(readFileSync(legacyAssetPath, 'utf8')).assets
+  : {};
+const legacyAssets = { ...previousAssets, ...assets };
+// Old pages retain their hashed files so they can finish using the previous address.
+writeFileSync(legacyAssetPath, JSON.stringify({ assets: legacyAssets }));
+
+async function bundleWorker(fileName, files, legacy = false) {
+  const contentTypes = Object.fromEntries(
+    Object.entries(files).map(([route, file]) => [route, file.contentType])
+  );
+  // A single module can be published through the managed connector without an upload token.
+  await build({
+    stdin: {
+      contents: `import worker from './cloudflare/worker.ts';
 import { createEmbeddedAssets } from './cloudflare/embeddedAssets.ts';
-const ASSETS = createEmbeddedAssets(${JSON.stringify(assets)});
-export default { fetch(request) { return worker.fetch(request, { ASSETS }); } };`,
-    resolveDir: root,
-    sourcefile: 'cloudflare-entry.mjs',
-  },
-  outfile: resolve(output, 'worker.mjs'),
-  bundle: true,
-  format: 'esm',
-  platform: 'browser',
-  target: 'es2022',
-  minify: true,
-});
+${legacy ? "import { legacyNavigationRedirect } from './cloudflare/legacyRedirect.ts';" : ''}
+const ASSETS = createEmbeddedAssets(${JSON.stringify(files)});
+${legacy ? `const contentTypes = ${JSON.stringify(contentTypes)};` : ''}
+export default { fetch(request, env = {}) {
+  ${legacy ? 'const redirect = legacyNavigationRedirect(request, contentTypes); if (redirect) return redirect;' : ''}
+  return worker.fetch(request, { ...env, ASSETS });
+} };`,
+      resolveDir: root,
+      sourcefile: legacy ? 'cloudflare-legacy-entry.mjs' : 'cloudflare-entry.mjs',
+    },
+    outfile: resolve(output, fileName),
+    bundle: true,
+    format: 'esm',
+    platform: 'browser',
+    target: 'es2022',
+    minify: true,
+  });
+}
+
+await bundleWorker('worker.mjs', assets);
+await bundleWorker('legacy-worker.mjs', legacyAssets, true);
 writeFileSync(resolve(output, 'manifest.json'), JSON.stringify({ manifest }, null, 2));
 console.log(
-  `Worker bundle with ${Object.keys(manifest).length} embedded assets prepared under .local/artifacts/cloudflare.`
+  `App and legacy Worker bundles prepared under .local/artifacts/cloudflare (${Object.keys(assets).length} current assets, ${Object.keys(legacyAssets).length} retained assets).`
 );

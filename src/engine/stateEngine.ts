@@ -7,6 +7,7 @@ import type {
   AuditEvent,
   TradingAction,
   JevDecisionState,
+  JevStatePayload,
   RiskCheckResult,
 } from '../types/index.ts';
 import {
@@ -39,6 +40,8 @@ export interface PaperExecution {
 }
 
 export interface EngineCycleOutput {
+  assessmentInput: JevStatePayload;
+  observedAt: number;
   market: MarketState;
   position: PositionState;
   orders: OrdersState;
@@ -305,13 +308,8 @@ export class StateEngine {
       const orders = structuredClone(this.orders);
       const policy = structuredClone(this.policy);
       const risk = this.computeRiskMetrics();
-      const { decision, payloadHash, factors, reason } = await this.jevPolicy.evaluatePolicy(
-        market,
-        position,
-        orders,
-        risk,
-        policy
-      );
+      const { decision, assessmentInput, payloadHash, factors, reason } =
+        await this.jevPolicy.evaluatePolicy(market, position, orders, risk, policy);
       this.gateTimestamp = observe ? this.now() : market.timestamp;
       // A pause or policy/market update while inference was pending invalidates execution.
       const stateUnchanged =
@@ -424,6 +422,7 @@ export class StateEngine {
         hard_checks: Object.fromEntries(
           Object.entries(riskCheck.checks).map(([key, value]) => [key, value.passed])
         ),
+        hard_check_details: structuredClone(riskCheck.checks),
         execution_allowed: riskCheck.allowed,
         execution_mode: observe ? 'observe' : 'paper',
         decision_source: decision.origin ?? decision.source,
@@ -434,6 +433,8 @@ export class StateEngine {
       };
       this.envioIndexer.recordAuditEvent(auditEvent);
       return {
+        assessmentInput,
+        observedAt: market.timestamp,
         market,
         position: structuredClone(this.position),
         orders: structuredClone(this.orders),

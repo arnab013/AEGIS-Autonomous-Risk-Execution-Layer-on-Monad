@@ -1,40 +1,35 @@
 # Aegis design direction
 
-Proposal review, 8 October 2026. This records the recommended scope; the full redesign has not been implemented.
+Implemented design, 8 October 2026. The workspace follows the supplied Precision Intelligence brief while keeping the MVP focused.
 
-The supplied Precision Intelligence brief fits Aegis. Its strongest idea is making a decision inspectable from observation through outcome. Keep the Aegis name and one focused workspace, then use the calmer surfaces, clearer typography and restrained accent colors from the proposal.
+The main idea is making a decision inspectable from observation through outcome. Aegis keeps one workspace, dark blue-gray surfaces, readable system typography and a restrained mint accent. The existing React components and CSS supply the interface; no component library was added.
 
 ## The main experience
 
-A visitor should understand three things quickly: what the market shows, what the assessment suggests, and what they would sign. Market reads and replay remain available before wallet connection.
+The decision flow is observation → assessment → policy checks → outcome. Its four keyboard-accessible stages expand to show captured inputs, assessment provenance, available checks and the actual result. An immutable snapshot retains the pre-execution payload and observation time while current market reads continue refreshing.
 
-Put the decision flow near the assessment: observation → assessment → policy checks → outcome. Every stage must belong to the same snapshot or proposal. Stage details show actual inputs, model source, applicable limits and the recorded result. A live protective sale is user initiated and can be prepared without Jev; do not imply that a separate assessment caused or authorized it.
+A live protective sale is labelled “User requested MON reduction”. It has its own proposal, checks and transaction record, independent of the assessment. Manual journal events retain exact proposal terms without AI statistics; older journal records remain readable.
 
-Make prepared, awaiting wallet, submitted, pending, reverted and confirmed visibly distinct. Keep MON amount, minimum USDC output, network, contract and freshness beside the wallet action. Passing a local check does not mean a transaction has been submitted or confirmed.
+Prepared, awaiting wallet, submitted, pending, reverted, confirmed and stopped states are distinct. Trade review retains exact MON amount, estimated and minimum USDC output, slippage, network, contract, simulation block, gas estimate and expiry. Expiry updates every second independently of market polling. A receipt timeout retains the submitted hash and allows a read-only confirmation retry before another sale can be prepared.
 
 ## Layout and controls
 
-Use a quiet header for market, network, Live/Replay, data freshness and wallet state. Give the market and assessment most of the desktop workspace. Put trade review within reach of the assessment. A narrow navigation rail is useful only if there are enough real destinations; the current MVP does not need seven pages.
+The header shows current context, actual network, Live/Replay, freshness and wallet state. On desktop, the decision flow spans the workspace above market and portfolio on the left, with assessment and trade review on the right. Mandate controls and the journal follow. Narrow layouts order assessment, decision flow and relevant action before market details.
 
-Prioritize trade size, exposure cap and slippage. Reveal advanced limits progressively while retaining a visible mandate summary. Save/Cancel would require draft state and an honest persistence contract: policies currently apply in the browser and do not survive a reload.
+Trade size, position cap and slippage remain visible. Other limits expand on demand. Valid edits apply immediately for the session; invalid values show field errors and block evaluation, preparation and signing. Every edit invalidates a prepared proposal. Policies reset on reload, as the interface states.
 
-On mobile, show current context, the assessment and relevant action early. Expand the order book, advanced policy controls and history on demand. The current rendered page passes overflow checks but makes users scroll through many controls and panels before reaching the live action.
+The order book, advanced controls and journal entries expand on demand. Exact trade terms wrap inside the viewport instead of truncating amounts. System fonts, tabular numbers, clear section titles and visible keyboard focus keep the interface readable without downloading fonts.
 
-Use one readable interface font and a complementary numeric face, tabular numbers, clearer section titles and visible keyboard focus. Reduce the repeated uppercase labels and tiny monospace metadata. Test evidence dialogs for Escape, focus return and keyboard containment; screenshots alone do not establish accessibility compliance.
+Evidence uses a labelled native dialog with Escape dismissal, explicit Tab/Shift+Tab containment, focus return and viewport scrolling. Browser verification supplements screenshots; it does not establish full accessibility compliance.
 
 ## Evidence and unavailable states
 
-Keep Live, synthetic Replay, heuristic assessments and unavailable inference unambiguous. Model probabilities describe a choice distribution, rather than the chance a trade will profit. Fallback should lead with “AI assessment unavailable” instead of presenting its default numbers as model confidence.
+Live observations, synthetic replay, heuristic assessments and unavailable inference remain distinct. Provenance uses the original assessment origin when a result came from cache. Fallback shows “AI assessment unavailable” with its reason and no confidence or probability bars. Genuine model values are labelled relative choice probabilities; they do not predict profit or authorize a trade.
 
-The live chart holds up to 60 prices observed during the session. It has no historical candles, indexed volume or historical timeframes. Improve its labels and inspection before adding a chart SDK or unsupported selectors.
+The live chart holds up to 60 prices observed during the session. It has no historical candles, indexed volume or historical timeframes. Historical loss, complete external positions, resting orders and trade flow remain unavailable. Their placeholder zeros are not evidence of low risk. Live execution supports a protective MON sale; the replay short hedge is simulated.
 
-Historical loss, complete external positions, resting orders and trade flow remain unavailable. Do not present their placeholder zeros as evidence of low risk. Live execution supports a protective MON sale; the replay short hedge is simulated.
+## Deferred scope
 
-## Delivery order
+Extra routes, historical chart controls, replay scrubbing and the Signal Ribbon remain deferred. Each needs supporting product behavior beyond this redesign. Paid Jev inference stays disabled and wallet signing requires an explicit user action.
 
-1. Add the decision flow and contextual evidence using existing state and events.
-2. Improve the mandate hierarchy and exact transaction review.
-3. Refine typography, surfaces, spacing, responsive layouts and keyboard interactions.
-4. Add a signal ribbon only when it helps inspect real recorded events. Replay scrubbing needs consistent restoration of both engine state and paper fills before it can be exposed.
-
-Keep the existing financial logic and verified adapters. Judge the redesign against a working demo: inspect the real Kuru market, prepare a protective sale, review its exact terms, then switch visibly to replay and inspect an oversized proposal blocked by policy.
+The [verification notes](UI_UX_TEST_RESULTS.md) separate actual market reads and simulation from intercepted browser fixtures. The [earlier audit](UI_UX_AUDIT.md) records the interface before these changes.

@@ -1,6 +1,6 @@
 import React from 'react';
-import { Wallet, ShieldCheck, ArrowUpRight, ArrowDownRight, Clock } from './icons.tsx';
-import { PositionState, OrdersState, UserPolicy, RiskMetrics } from '../types/index.ts';
+import { Wallet, Clock } from './icons.tsx';
+import type { PositionState, OrdersState, UserPolicy, RiskMetrics } from '../types/index.ts';
 
 interface PortfolioPanelProps {
   position: PositionState;
@@ -11,6 +11,27 @@ interface PortfolioPanelProps {
   hasWallet?: boolean;
 }
 
+function LimitMeter({ label, value, ratio }: { label: string; value: string; ratio: number }) {
+  const visualRatio = Number.isFinite(ratio) ? Math.max(0, ratio) : ratio === Infinity ? 1 : 0;
+  return (
+    <div className="limit-meter">
+      <div className="limit-meter-label">
+        <span>{label}</span>
+        <strong>{value}</strong>
+      </div>
+      <div className="limit-meter-track" aria-hidden="true">
+        <span
+          className={
+            'limit-meter-fill' +
+            (visualRatio > 0.85 ? ' is-blocked' : visualRatio > 0.65 ? ' is-warning' : '')
+          }
+          style={{ width: Math.min(100, visualRatio * 100) + '%' }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export const PortfolioPanel: React.FC<PortfolioPanelProps> = ({
   position,
   orders,
@@ -19,169 +40,156 @@ export const PortfolioPanel: React.FC<PortfolioPanelProps> = ({
   live = false,
   hasWallet = false,
 }) => {
-  const isNetBullish = position.net_delta > 0;
-  const isPnlPositive = position.realized_pnl_today + position.unrealized_pnl >= 0;
+  const pnl = position.realized_pnl_today + position.unrealized_pnl;
+  const disconnected = live && !hasWallet;
 
   return (
-    <div className="terminal-card flex flex-col h-full overflow-hidden">
-      <div className="terminal-header flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Wallet className="w-4 h-4 text-emerald-400" />
-          <span className="font-mono text-xs font-bold text-white tracking-wider">
-            PORTFOLIO & RISK ALLOCATION
+    <section className="portfolio-card terminal-card" aria-labelledby="portfolio-title">
+      <header className="panel-heading">
+        <div>
+          <span className="assessment-eyebrow">
+            <Wallet aria-hidden="true" /> {live ? 'Wallet readings' : 'Replay ledger'}
           </span>
+          <h2 id="portfolio-title" className="panel-title">
+            {live ? 'Wallet & risk' : 'Paper portfolio'}
+          </h2>
         </div>
-        <span className="text-[11px] font-mono text-emerald-400">
+        <span className="panel-status">
           {live ? (hasWallet ? 'WALLET BALANCES' : 'WALLET DISCONNECTED') : 'PAPER PORTFOLIO'}
         </span>
-      </div>
-
-      <div className="p-3 space-y-3 flex-1 overflow-y-auto">
-        <div className="bg-[#10131b] p-3 rounded border border-[#1a1f2c] space-y-2">
-          <div className="flex justify-between items-baseline">
-            <span className="text-[10px] uppercase font-mono text-[#64748b]">
-              Net Portfolio Delta
-            </span>
-            <span
-              className={`text-lg font-bold font-mono flex items-center gap-1 ${isNetBullish ? 'text-emerald-400' : 'text-amber-400'}`}
-            >
-              {isNetBullish ? (
-                <ArrowUpRight className="w-4 h-4" />
-              ) : (
-                <ArrowDownRight className="w-4 h-4" />
-              )}
-              {live && !hasWallet ? '—' : `$${position.net_delta.toFixed(2)}`}
-            </span>
+      </header>
+      <div className="portfolio-body">
+        {disconnected ? (
+          <div className="portfolio-empty">
+            <h3>Connect a wallet to inspect balances</h3>
+            <p>
+              Wallet exposure and utilization are unavailable until MON and USDC balances are read.
+            </p>
           </div>
-
-          <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#1a1f2c] text-xs font-mono">
-            <div>
-              <span className="text-[10px] text-[#64748b] block">Spot Exposure (Kuru)</span>
-              <span className="font-semibold text-white">
-                {live && !hasWallet
-                  ? 'Connect wallet'
-                  : `$${position.spot_exposure_usd.toFixed(2)}`}
-              </span>
-              <span className="text-[10px] text-[#64748b] block">
-                {live && !hasWallet
-                  ? 'MON and USDC holdings'
-                  : `(${position.spot_balance_mon.toFixed(1)} MON)`}
-              </span>
-            </div>
-            <div className="text-right">
-              <span className="text-[10px] text-[#64748b] block">
-                {live ? 'Perps not indexed' : 'Paper short hedge'}
-              </span>
-              <span
-                className={`font-semibold ${position.perp_exposure_usd < 0 ? 'text-rose-400' : 'text-[#64748b]'}`}
-              >
-                {live ? '—' : `$${position.perp_exposure_usd.toFixed(2)}`}
-              </span>
-              <span className="text-[10px] text-[#64748b] block">
-                {live ? 'Unavailable' : `(${position.perp_short_size_mon.toFixed(1)} Short)`}
-              </span>
-            </div>
-          </div>
-        </div>
-        <div className="bg-[#10131b] p-3 rounded border border-[#1a1f2c] space-y-2">
-          <div className="flex justify-between items-center text-xs font-mono">
-            <span className="text-[#64748b] text-[11px]">Position Utilization</span>
-            <span className="font-semibold text-white">
-              {(risk.position_utilization * 100).toFixed(1)}% / Max ${policy.max_position_usd}
-            </span>
-          </div>
-          <div className="w-full h-1.5 bg-[#1b212f] rounded-full overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all duration-300 ${
-                risk.position_utilization > 0.85
-                  ? 'bg-rose-500'
-                  : risk.position_utilization > 0.65
-                    ? 'bg-amber-500'
-                    : 'bg-emerald-500'
-              }`}
-              style={{ width: `${Math.min(100, risk.position_utilization * 100)}%` }}
-            />
-          </div>
-
-          <div className="flex justify-between items-center text-xs font-mono pt-1">
-            <span className="text-[#64748b] text-[11px]">Leverage Utilization</span>
-            <span className="font-semibold text-white">
-              {position.leverage.toFixed(2)}x / Max {policy.max_leverage.toFixed(1)}x
-            </span>
-          </div>
-          <div className="w-full h-1.5 bg-[#1b212f] rounded-full overflow-hidden">
-            <div
-              className="h-full bg-[#7b3fe4] rounded-full transition-all duration-300"
-              style={{
-                width: `${Math.min(100, (position.leverage / policy.max_leverage) * 100)}%`,
-              }}
-            />
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-2 bg-[#10131b] p-2.5 rounded border border-[#1a1f2c] text-xs font-mono">
-          <div>
-            <span className="text-[10px] text-[#64748b] uppercase block">
-              {live ? 'Historical PnL unavailable' : 'Paper PnL'}
-            </span>
-            <span
-              className={`font-bold text-sm ${isPnlPositive ? 'text-emerald-400' : 'text-rose-400'}`}
-            >
-              {live
-                ? '—'
-                : `${isPnlPositive ? '+' : ''}$${(position.realized_pnl_today + position.unrealized_pnl).toFixed(2)}`}
-            </span>
-          </div>
-          <div className="text-right">
-            <span className="text-[10px] text-[#64748b] uppercase block">
-              Daily Loss Utilization
-            </span>
-            <span className="font-semibold text-white">
-              {live
-                ? `Unknown / $${policy.max_daily_loss}`
-                : `${(risk.daily_loss_utilization * 100).toFixed(1)}% / $${policy.max_daily_loss}`}
-            </span>
-          </div>
-        </div>
-        <div className="space-y-1.5">
-          <div className="flex justify-between items-center text-[10px] uppercase font-mono text-[#64748b] px-1">
-            <span>Active Kuru Orders ({orders.open_orders.length})</span>
-            <span>Timeout: {policy.stale_order_timeout_seconds}s</span>
-          </div>
-
-          {orders.open_orders.length === 0 ? (
-            <div className="p-3 text-center text-xs font-mono text-[#64748b] bg-[#10131b] rounded border border-dashed border-[#1a1f2c]">
-              {live ? 'Resting orders are not indexed in this MVP' : 'No paper resting orders'}
-            </div>
-          ) : (
-            <div className="space-y-1">
-              {orders.open_orders.map((ord) => (
-                <div
-                  key={ord.id}
-                  className="flex justify-between items-center px-2 py-1.5 bg-[#10131b] rounded border border-[#1a1f2c] text-xs font-mono"
-                >
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`px-1.5 py-0.5 rounded text-[10px] uppercase font-bold ${
-                        ord.side === 'buy'
-                          ? 'bg-emerald-950 text-emerald-400'
-                          : 'bg-rose-950 text-rose-400'
-                      }`}
-                    >
-                      {ord.side}
-                    </span>
-                    <span className="text-white">${ord.price.toFixed(4)}</span>
-                    <span className="text-[#64748b]">({ord.size} MON)</span>
-                  </div>
-                  <div className="flex items-center gap-1 text-[11px] text-amber-400">
-                    <Clock className="w-3 h-3" />
-                    <span>{ord.age_seconds}s ago</span>
-                  </div>
+        ) : (
+          <>
+            <dl className="portfolio-metrics portfolio-balances">
+              <div>
+                <dt>{live ? 'Wallet MON exposure' : 'Paper net delta'}</dt>
+                <dd>{(live ? position.spot_exposure_usd : position.net_delta).toFixed(2)} USD</dd>
+              </div>
+              <div>
+                <dt>MON balance</dt>
+                <dd>
+                  {position.spot_balance_mon.toLocaleString(undefined, {
+                    maximumFractionDigits: 18,
+                  })}{' '}
+                  MON
+                </dd>
+              </div>
+              <div>
+                <dt>USDC balance</dt>
+                <dd>
+                  {position.usdc_balance.toLocaleString(undefined, { maximumFractionDigits: 6 })}{' '}
+                  USDC
+                </dd>
+              </div>
+              {!live && (
+                <div>
+                  <dt>Paper short hedge</dt>
+                  <dd>
+                    {position.perp_short_size_mon.toLocaleString()} MON ·{' '}
+                    {position.perp_exposure_usd.toFixed(2)} USD
+                  </dd>
                 </div>
-              ))}
+              )}
+            </dl>
+            <div className="portfolio-limits">
+              <LimitMeter
+                label={live ? 'Wallet spot position limit' : 'Position limit'}
+                value={
+                  (risk.position_utilization * 100).toFixed(1) +
+                  '% of ' +
+                  policy.max_position_usd +
+                  ' USD'
+                }
+                ratio={risk.position_utilization}
+              />
+              <LimitMeter
+                label={live ? 'Wallet exposure / collateral' : 'Leverage limit'}
+                value={
+                  position.leverage.toFixed(2) + 'x of ' + policy.max_leverage.toFixed(1) + 'x'
+                }
+                ratio={position.leverage / policy.max_leverage}
+              />
+            </div>
+          </>
+        )}
+        {live && (
+          <p className="panel-subtitle">
+            These readings cover this wallet's MON and USDC. External exposure and leveraged
+            positions are not indexed.
+          </p>
+        )}
+        <dl className="portfolio-metrics">
+          <div>
+            <dt>{live ? 'Historical PnL' : 'Paper PnL'}</dt>
+            <dd className={!live ? (pnl >= 0 ? 'is-positive' : 'is-negative') : ''}>
+              {live ? 'Unavailable' : (pnl >= 0 ? '+' : '') + pnl.toFixed(2) + ' USD'}
+            </dd>
+          </div>
+          <div>
+            <dt>Daily loss utilization</dt>
+            <dd>
+              {live
+                ? 'Unavailable · limit ' + policy.max_daily_loss + ' USD'
+                : (risk.daily_loss_utilization * 100).toFixed(1) +
+                  '% of ' +
+                  policy.max_daily_loss +
+                  ' USD'}
+            </dd>
+          </div>
+          {live && (
+            <div>
+              <dt>Perpetual positions</dt>
+              <dd>Unavailable · not indexed</dd>
             </div>
           )}
-        </div>
+        </dl>
+        <details className="portfolio-orders">
+          <summary>
+            {live
+              ? 'Resting orders · unavailable'
+              : 'Paper resting orders · ' + orders.open_orders.length}
+          </summary>
+          {live ? (
+            <p>
+              Resting orders are not indexed in this MVP. An empty local list does not show that no
+              orders exist on chain.
+            </p>
+          ) : (
+            <>
+              <p className="panel-subtitle">
+                Stale-order timeout: {policy.stale_order_timeout_seconds} seconds
+              </p>
+              {!orders.open_orders.length ? (
+                <p>No paper resting orders.</p>
+              ) : (
+                <ul>
+                  {orders.open_orders.map((order) => (
+                    <li className="portfolio-order" key={order.id}>
+                      <strong className={order.side === 'buy' ? 'is-positive' : 'is-negative'}>
+                        {order.side === 'buy' ? 'Buy' : 'Sell'}
+                      </strong>
+                      <span>
+                        {order.size} MON at {order.price.toFixed(4)} USDC
+                      </span>
+                      <span>
+                        <Clock aria-hidden="true" /> {order.age_seconds} seconds old
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+        </details>
       </div>
-    </div>
+    </section>
   );
 };

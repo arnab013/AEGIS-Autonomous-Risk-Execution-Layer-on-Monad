@@ -172,6 +172,7 @@ export interface JevDecisionState {
 export interface HardCheckItem {
   passed: boolean;
   message: string;
+  applies?: boolean;
 }
 
 export interface RiskCheckResult {
@@ -191,17 +192,54 @@ export interface StructuredDecisionFactors {
   position_limit_satisfied: boolean;
 }
 
+export type ManualTradeStatus =
+  | 'idle'
+  | 'prepared'
+  | 'awaiting_wallet'
+  | 'submitted'
+  | 'pending'
+  | 'confirmed'
+  | 'reverted'
+  | 'stopped';
+
+export interface ManualTradeMetadata {
+  proposal_id: string;
+  account: string;
+  chain_id: number;
+  market_address: string;
+  amount_mon: string;
+  amount_wei: string;
+  size_units: string;
+  estimated_out_usdc: string;
+  min_out_usdc: string;
+  min_out_units: string;
+  slippage_bps: number;
+  reference_mid_price: string;
+  snapshot_block_number: number;
+  snapshot_timestamp: number;
+  created_at: number;
+  expires_at: number;
+  gas_estimate: string;
+  simulation: 'passed';
+  checked_at: number;
+  lifecycle_status: ManualTradeStatus;
+  transaction_hash?: string;
+  received_usdc?: string;
+  lifecycle_detail?: string;
+}
+
 export interface AuditEvent {
   id: string;
   timestamp: string;
   market_state_hash: string;
-  jev_model: string;
-  action_probabilities: Record<TradingAction, number>;
-  risk_probabilities: Record<RiskLevel, number>;
-  regime_probabilities: Record<MarketRegime, number>;
+  jev_model?: string;
+  action_probabilities?: Record<TradingAction, number>;
+  risk_probabilities?: Record<RiskLevel, number>;
+  regime_probabilities?: Record<MarketRegime, number>;
   selected_action: TradingAction;
-  confidence: number;
+  confidence?: number;
   hard_checks: Record<string, boolean>;
+  hard_check_details?: Record<string, HardCheckItem>;
   execution_allowed: boolean;
   transaction_hash?: string;
   venue?: 'kuru' | 'perpl' | 'policy_guard';
@@ -210,8 +248,9 @@ export interface AuditEvent {
   transaction_status?: 'submitted' | 'confirmed' | 'reverted';
   chain_id?: number;
   user_initiated?: boolean;
+  manual_trade?: ManualTradeMetadata;
   reason: string;
-  factors: StructuredDecisionFactors;
+  factors?: StructuredDecisionFactors;
 }
 
 export interface ScenarioTick {

@@ -6,18 +6,23 @@ import { JevPolicyPanel } from './components/JevPolicyPanel.tsx';
 import { ExplainabilityModal } from './components/ExplainabilityModal.tsx';
 import { AuditTrailPanel } from './components/AuditTrailPanel.tsx';
 import { ReplayControlBar } from './components/ReplayControlBar.tsx';
+import { DecisionFlow } from './components/DecisionFlow.tsx';
+import { TradeReview } from './components/TradeReview.tsx';
+import { createAssessmentSnapshot, manualTradeAudit, tradeStateAfterError } from './ui/evidence.ts';
+import type { AssessmentSnapshot, EvidenceContext, TradeLifecycle } from './ui/evidence.ts';
+import { validatePolicyInput } from './ui/policyInputs.ts';
+import type { PolicyInputKey } from './ui/policyInputs.ts';
 import { StateEngine } from './engine/stateEngine.ts';
 import { HardRiskGate } from './engine/riskGate.ts';
 import type { EngineCycleOutput } from './engine/stateEngine.ts';
 import { JevPolicyEngine } from './jev/policyEngine.ts';
 import { JevClient } from './jev/client.ts';
-import { buildJevStatePayload, hashStatePayload } from './jev/stateBuilder.ts';
 import { REPLAY_SCENARIOS } from './data/scenarios.ts';
 import { MonadClient, monadTestnetConfig, monadMainnetConfig } from './execution/monadClient.ts';
 import type { Eip1193Provider } from './execution/monadClient.ts';
 import { KuruClient, kuruTestnetConfig, kuruMainnetConfig } from './execution/kuruClient.ts';
 import type { KuruPreparedTrade, KuruMarketData } from './execution/kuruClient.ts';
-import type { AuditEvent, PositionState, UserPolicy } from './types/index.ts';
+import type { AuditEvent, PositionState, RiskCheckResult, UserPolicy } from './types/index.ts';
 
 interface ServiceStatus {
   inferenceEnabled: boolean;
@@ -68,7 +73,8 @@ export const Terminal: React.FC = () => {
   const [resetVersion, setResetVersion] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [explain, setExplain] = useState(false);
+  const [evidence, setEvidence] = useState<EvidenceContext | null>(null);
+  const [assessment, setAssessment] = useState<AssessmentSnapshot | null>(null);
   const [state, setState] = useState<EngineCycleOutput | null>(null);
   const stateRef = useRef<EngineCycleOutput | null>(null);
   stateRef.current = state;
@@ -85,10 +91,28 @@ export const Terminal: React.FC = () => {
   const [latency, setLatency] = useState<number | null>(null);
   const [clip, setClip] = useState(250);
   const [prepared, setPrepared] = useState<KuruPreparedTrade | null>(null);
-  const [txState, setTxState] = useState('');
+  const [tradeState, setTradeState] = useState<TradeLifecycle>({ status: 'idle' });
+  const tradeStateRef = useRef(tradeState);
+  tradeStateRef.current = tradeState;
+  const [tradeChecks, setTradeChecks] = useState<RiskCheckResult | null>(null);
+  const tradeChecksRef = useRef<RiskCheckResult | null>(null);
+  const [tradeCheckedAt, setTradeCheckedAt] = useState(0);
+  const tradeCheckedAtRef = useRef(0);
+  const [now, setNow] = useState(Date.now);
   const [minimumMon, setMinimumMon] = useState<string | null>(null);
   const sizeDecimals = useRef(10);
   const [policy, setPolicy] = useState<UserPolicy>(() => new StateEngine().policy);
+  const [policyInputs, setPolicyInputs] = useState<Record<PolicyInputKey, string>>(() => ({
+    max_position_usd: String(policy.max_position_usd),
+    max_order_size: String(policy.max_order_size),
+    max_daily_loss: String(policy.max_daily_loss),
+    max_leverage: String(policy.max_leverage),
+    max_slippage_bps: String(policy.max_slippage_bps),
+    min_liquidity_depth_usd: String(policy.min_liquidity_depth_usd),
+    trade_size: String(clip),
+  }));
+  const [inputErrors, setInputErrors] = useState<Partial<Record<PolicyInputKey, string>>>({});
+  const validInputs = useRef(true);
   const policyRef = useRef(policy);
   policyRef.current = policy;
   const walletRef = useRef(wallet);
@@ -103,6 +127,47 @@ export const Terminal: React.FC = () => {
   const scenario = REPLAY_SCENARIOS.find((item) => item.id === scenarioId)!;
   const networkConfig = status?.chainId === 143 ? monadMainnetConfig : monadTestnetConfig;
   const kuruConfig = status?.chainId === 143 ? kuruMainnetConfig : kuruTestnetConfig;
+
+  function updateTrade(next: TradeLifecycle) {
+    tradeStateRef.current = next;
+    setTradeState(next);
+  }
+  function invalidateProposal(reason: string) {
+    setPrepared(null);
+    const current = tradeStateRef.current;
+    if (current.status === 'prepared' || current.status === 'awaiting_wallet')
+      updateTrade({ ...current, status: 'stopped', detail: reason });
+  }
+  function editPolicyInput(key: PolicyInputKey, raw: string) {
+    const nextInputs = { ...policyInputs, [key]: raw };
+    const errors: Partial<Record<PolicyInputKey, string>> = {};
+    for (const [field, value] of Object.entries(nextInputs)) {
+      const error = validatePolicyInput(field as PolicyInputKey, value);
+      if (error) errors[field as PolicyInputKey] = error;
+    }
+    validInputs.current = Object.keys(errors).length === 0;
+    authorizationVersion.current++;
+    invalidateProposal('A trade size or policy field changed. Prepare a fresh proposal.');
+    setPlaying(false);
+    setPolicyInputs(nextInputs);
+    setInputErrors(errors);
+    if (!validatePolicyInput(key, raw)) {
+      if (key === 'trade_size') setClip(Number(raw));
+      else {
+        const nextPolicy = { ...policyRef.current, [key]: Number(raw) };
+        policyRef.current = nextPolicy;
+        setPolicy(nextPolicy);
+      }
+    }
+  }
+  function requireValidInputs() {
+    if (!validInputs.current) throw new Error('Correct the highlighted mandate fields first.');
+  }
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const record = useCallback((event: AuditEvent) => {
     setEvents((previous) => [event, ...previous].slice(0, 200));
@@ -131,6 +196,9 @@ export const Terminal: React.FC = () => {
     setPlaying(false);
     setTickIndex(0);
     setPrepared(null);
+    invalidateProposal('The workspace changed. Prepare a fresh proposal.');
+    setAssessment(null);
+    setEvidence(null);
     setState(null);
     stateRef.current = null;
     setNotice('');
@@ -160,11 +228,21 @@ export const Terminal: React.FC = () => {
         tick.aggressive_sell_flow,
         replayClock.current
       );
+      if (!validInputs.current) {
+        setNotice('Correct the highlighted mandate fields, then step the replay.');
+        return;
+      }
+      const policyVersion = authorizationVersion.current;
       void next
         .step(clip)
         .then((result) => {
-          if (generation.current === token) {
+          if (
+            generation.current === token &&
+            authorizationVersion.current === policyVersion &&
+            validInputs.current
+          ) {
             setState(result);
+            setAssessment(createAssessmentSnapshot(result, 'replay'));
             record(result.auditEvent);
           }
         })
@@ -173,7 +251,7 @@ export const Terminal: React.FC = () => {
   }, [mode, scenarioId, resetVersion]);
 
   const refreshMarket = useCallback(async () => {
-    if (mode !== 'live') return;
+    if (mode !== 'live' || modeRef.current !== 'live') return;
     const token = generation.current;
     const request = ++marketRequest.current;
     const snapshot = await api<KuruMarketData>('/api/market');
@@ -218,7 +296,10 @@ export const Terminal: React.FC = () => {
         leverage: exposure / Math.max(exposure + usdc, 0.00001),
       };
     } else current.position = emptyPosition();
-    const first = stateRef.current ? null : await current.step(clip, { execute: false });
+    const first =
+      stateRef.current || !validInputs.current
+        ? null
+        : await current.step(clip, { execute: false });
     if (
       generation.current !== token ||
       request !== marketRequest.current ||
@@ -236,6 +317,7 @@ export const Terminal: React.FC = () => {
           }
         : first
     );
+    if (first) setAssessment(createAssessmentSnapshot(first, 'live'));
     setMarketError('');
   }, [mode, wallet]);
 
@@ -264,14 +346,15 @@ export const Terminal: React.FC = () => {
 
   const evaluate = useCallback(
     async (advance = false, useJev = true) => {
-      if (pending.current) return;
+      if (pending.current || !validInputs.current) return;
       pending.current = true;
       setBusy(true);
-      setPrepared(null);
+      invalidateProposal('A new assessment was requested. Prepare a fresh proposal.');
       const token = generation.current;
       const current = engine.current;
       const policyVersion = authorizationVersion.current;
       try {
+        requireValidInputs();
         if (mode === 'live') await refreshMarket();
         else if (advance) {
           const index = Math.min(tickIndex + 1, scenario.ticks.length - 1);
@@ -319,6 +402,7 @@ export const Terminal: React.FC = () => {
         }
         if (generation.current === token && policyVersion === authorizationVersion.current) {
           setState(result);
+          setAssessment(createAssessmentSnapshot(result, mode));
           record(result.auditEvent);
         }
       } catch (error) {
@@ -348,8 +432,8 @@ export const Terminal: React.FC = () => {
   }, [playing, evaluate, mode]);
   useEffect(() => {
     engine.current.policy = { ...policy };
-    authorizationVersion.current++;
     setPrepared(null);
+    invalidateProposal('The mandate changed. Prepare a fresh proposal.');
   }, [policy, clip]);
 
   function disconnect() {
@@ -359,10 +443,12 @@ export const Terminal: React.FC = () => {
     setWallet(null);
     setBalance(null);
     setPrepared(null);
+    invalidateProposal('Wallet disconnected. Reconnect and prepare a fresh proposal.');
     if (mode === 'live') {
       engine.current.position = emptyPosition();
       stateRef.current = null;
       setState(null);
+      setAssessment(null);
     }
   }
 
@@ -385,6 +471,7 @@ export const Terminal: React.FC = () => {
         );
       authorizationVersion.current++;
       setPrepared(null);
+      invalidateProposal('Wallet connected. Prepare a fresh proposal for this account.');
       setWallet(result.address);
       walletRef.current = result.address;
       setBalance(walletBalance);
@@ -402,11 +489,15 @@ export const Terminal: React.FC = () => {
       setWallet(null);
       setBalance(null);
       setPrepared(null);
+      const trade = tradeStateRef.current;
+      if (trade.status === 'prepared' || trade.status === 'awaiting_wallet')
+        updateTrade({ ...trade, status: 'stopped', detail: 'Wallet account or network changed.' });
       if (modeRef.current === 'live') {
         generation.current++;
         engine.current.position = emptyPosition();
         setState(null);
         stateRef.current = null;
+        setAssessment(null);
       }
       setNotice('Wallet account or network changed. Reconnect to review a fresh proposal.');
     };
@@ -418,6 +509,7 @@ export const Terminal: React.FC = () => {
     };
   }, []);
   function reductionGate(current: StateEngine, amountMon: number) {
+    requireValidInputs();
     current.policy = { ...policyRef.current };
     if (current.policy.is_paused)
       throw new Error('Trading is paused. Resume before reviewing a new transaction.');
@@ -434,15 +526,25 @@ export const Terminal: React.FC = () => {
     return result;
   }
   async function prepareReduction() {
-    if (!wallet || mode !== 'live' || pending.current) return;
+    if (!wallet || mode !== 'live' || pending.current || !validInputs.current) return;
+    if (
+      tradeStateRef.current.hash &&
+      ['submitted', 'pending'].includes(tradeStateRef.current.status)
+    ) {
+      setNotice('Resolve the submitted transaction before preparing another sale.');
+      return;
+    }
     pending.current = true;
     const token = generation.current,
       policyVersion = authorizationVersion.current;
     const current = engine.current;
     setBusy(true);
     setPrepared(null);
-    setTxState('');
+    updateTrade({ status: 'idle' });
+    setTradeChecks(null);
+    tradeChecksRef.current = null;
     try {
+      requireValidInputs();
       await refreshMarket();
       if (
         token !== generation.current ||
@@ -474,25 +576,47 @@ export const Terminal: React.FC = () => {
       )
         throw new Error('Wallet, market mode or mandate changed. Prepare again.');
       setPrepared(proposal);
-      setTxState(
-        'Simulation passed. Review the exact trade before opening your wallet. The direct Kuru transaction enforces minimum output, but has no onchain deadline; reject a wallet prompt if it becomes stale.'
-      );
+      const checks = reductionGate(current, Number(proposal.amountMon));
+      const checkedAt = Date.now();
+      const transaction: TradeLifecycle = {
+        status: 'prepared',
+        proposal,
+        detail: 'Simulation passed. Review the exact terms before opening your wallet.',
+      };
+      tradeChecksRef.current = checks;
+      tradeCheckedAtRef.current = checkedAt;
+      setTradeChecks(checks);
+      setTradeCheckedAt(checkedAt);
+      updateTrade(transaction);
+      record(manualTradeAudit({ kind: 'manual_trade', proposal, checks, checkedAt, transaction }));
     } catch (error) {
       setNotice((error as Error).message);
+      updateTrade(tradeStateAfterError(tradeStateRef.current, error));
+      setPrepared(null);
     } finally {
       pending.current = false;
       setBusy(false);
     }
   }
   async function submitReduction() {
-    if (!prepared || !wallet || pending.current) return;
+    if (
+      !prepared ||
+      !wallet ||
+      modeRef.current !== 'live' ||
+      pending.current ||
+      !validInputs.current
+    )
+      return;
     pending.current = true;
     const token = generation.current,
       policyVersion = authorizationVersion.current;
     const proposal = prepared;
     const current = engine.current;
+    let submittedState: TradeLifecycle = { status: 'awaiting_wallet', proposal };
+    let latestChecks = tradeChecksRef.current;
     setBusy(true);
     try {
+      requireValidInputs();
       await refreshMarket();
       if (
         token !== generation.current ||
@@ -501,6 +625,11 @@ export const Terminal: React.FC = () => {
       )
         throw new Error('Wallet, market mode or mandate changed. Prepare again.');
       const checks = reductionGate(current, Number(proposal.amountMon));
+      latestChecks = checks;
+      tradeChecksRef.current = checks;
+      setTradeChecks(checks);
+      tradeCheckedAtRef.current = Date.now();
+      setTradeCheckedAt(tradeCheckedAtRef.current);
       if (
         Number(proposal.minOutUsdc) / Number(proposal.amountMon) <
         engine.current.market.mid_price * (1 - policyRef.current.max_slippage_bps / 10000)
@@ -519,36 +648,7 @@ export const Terminal: React.FC = () => {
         undefined,
         new MonadClient(kuruConfig, undefined, browserRpcFetch)
       );
-      const liveHash = hashStatePayload(
-        buildJevStatePayload(
-          current.market,
-          current.position,
-          current.orders,
-          current.computeRiskMetrics(),
-          current.policy
-        )
-      );
-      const base = state?.auditEvent
-        ? {
-            ...state.auditEvent,
-            market_state_hash: liveHash,
-            jev_model: 'not_used_for_user_action',
-            decision_source: 'user',
-            selected_action: 'reduce_position' as const,
-            confidence: 1,
-            action_probabilities: {
-              increase_position: 0,
-              reduce_position: 1,
-              hold: 0,
-              hedge: 0,
-              cancel_orders: 0,
-            },
-            hard_checks: Object.fromEntries(
-              Object.entries(checks.checks).map(([key, value]) => [key, value.passed])
-            ),
-          }
-        : undefined;
-      setTxState('Awaiting wallet confirmation…');
+      updateTrade({ ...submittedState, detail: 'Opening your wallet for explicit approval.' });
       const hash = await client.submitPreparedTrade(proposal, () => {
         if (
           token !== generation.current ||
@@ -560,102 +660,228 @@ export const Terminal: React.FC = () => {
           throw new Error('Wallet, market mode or mandate changed. Prepare again.');
         if (Date.now() >= proposal.expiresAt)
           throw new Error('Trade proposal expired. Prepare it again.');
-        reductionGate(current, Number(proposal.amountMon));
+        latestChecks = reductionGate(current, Number(proposal.amountMon));
+        tradeChecksRef.current = latestChecks;
+        setTradeChecks(latestChecks);
+        tradeCheckedAtRef.current = Date.now();
+        setTradeCheckedAt(tradeCheckedAtRef.current);
       });
       setPrepared(null);
-      setTxState(`Submitted ${hash}. Waiting for Monad receipt…`);
-      if (base)
-        record({
-          ...base,
-          id: crypto.randomUUID(),
-          timestamp: new Date().toISOString(),
-          selected_action: 'reduce_position',
-          hard_checks: Object.fromEntries(
-            Object.entries(checks.checks).map(([key, value]) => [key, value.passed])
-          ),
-          execution_allowed: true,
-          transaction_hash: hash,
-          chain_id: proposal.chainId,
-          venue: 'kuru',
-          user_initiated: true,
-          execution_mode: 'wallet',
-          transaction_status: 'submitted',
-          reason:
-            'User requested a protective MON reduction. Hard risk checks and Kuru simulation passed; fill is pending receipt.',
-        });
+      submittedState = {
+        status: 'submitted',
+        proposal,
+        hash,
+        detail: 'Submitted to Monad. Waiting for the matching receipt.',
+      };
+      updateTrade(submittedState);
+      record(
+        manualTradeAudit({
+          kind: 'manual_trade',
+          proposal,
+          checks: latestChecks!,
+          checkedAt: tradeCheckedAtRef.current,
+          transaction: submittedState,
+        })
+      );
       const { receipt, receivedUsdc } = await client.waitForTradeReceipt(proposal, hash);
       if (receipt.status === 'confirmed') liveGate.current.recordExecution();
-      setTxState(
-        receipt.status === 'confirmed'
-          ? `Confirmed on Monad: received ${receivedUsdc} USDC · ${hash}`
-          : `Transaction reverted: ${hash}`
+      submittedState = {
+        ...submittedState,
+        status: receipt.status,
+        receivedUsdc,
+        detail:
+          receipt.status === 'confirmed'
+            ? 'Confirmed receipt and USDC output verified.'
+            : 'The Monad receipt reports a reverted transaction.',
+      };
+      updateTrade(submittedState);
+      record(
+        manualTradeAudit({
+          kind: 'manual_trade',
+          proposal,
+          checks: latestChecks!,
+          checkedAt: tradeCheckedAtRef.current,
+          transaction: submittedState,
+        })
       );
-      if (base)
-        record({
-          ...base,
-          id: crypto.randomUUID(),
-          timestamp: new Date().toISOString(),
-          selected_action: 'reduce_position',
-          execution_allowed: true,
-          transaction_hash: hash,
-          chain_id: proposal.chainId,
-          venue: 'kuru',
-          user_initiated: true,
-          execution_mode: 'wallet',
-          transaction_status: receipt.status,
-          reason: `Wallet-reviewed Kuru reduction: ${receipt.status}. Balances refreshed from chain.`,
-        });
       await refreshMarket();
     } catch (error) {
-      setTxState(`Execution stopped: ${(error as Error).message}`);
+      const next = tradeStateAfterError(submittedState, error);
+      updateTrade(next);
+      setPrepared(null);
+      if (next.hash && latestChecks)
+        record(
+          manualTradeAudit({
+            kind: 'manual_trade',
+            proposal,
+            checks: latestChecks,
+            checkedAt: tradeCheckedAtRef.current,
+            transaction: next,
+          })
+        );
     } finally {
       pending.current = false;
       setBusy(false);
     }
   }
-  const source = state?.jevDecision.origin || state?.jevDecision.source;
+  async function checkConfirmation() {
+    const transaction = tradeStateRef.current;
+    const proposal = transaction.proposal;
+    const checks = tradeChecksRef.current;
+    if (!transaction.hash || !proposal || !checks || pending.current) return;
+    pending.current = true;
+    setBusy(true);
+    let resolvedTransaction = transaction;
+    try {
+      const config = proposal.chainId === 143 ? kuruMainnetConfig : kuruTestnetConfig;
+      const client = new KuruClient(
+        config,
+        undefined,
+        new MonadClient(config, undefined, browserRpcFetch)
+      );
+      const { receipt, receivedUsdc } = await client.waitForTradeReceipt(
+        proposal,
+        transaction.hash
+      );
+      const next: TradeLifecycle = {
+        ...transaction,
+        status: receipt.status,
+        receivedUsdc,
+        detail:
+          receipt.status === 'confirmed'
+            ? 'Confirmed receipt and USDC output verified.'
+            : 'The receipt reports a reverted transaction.',
+      };
+      resolvedTransaction = next;
+      updateTrade(next);
+      if (receipt.status === 'confirmed') liveGate.current.recordExecution();
+      record(
+        manualTradeAudit({
+          kind: 'manual_trade',
+          proposal,
+          checks,
+          checkedAt: tradeCheckedAtRef.current,
+          transaction: next,
+        })
+      );
+      if (modeRef.current === 'live') await refreshMarket();
+    } catch (error) {
+      updateTrade(tradeStateAfterError(resolvedTransaction, error));
+    } finally {
+      pending.current = false;
+      setBusy(false);
+    }
+  }
+
+  const source = assessment?.decision.origin ?? assessment?.decision.source;
+  const fields: Record<PolicyInputKey, string> = {
+    trade_size: 'Trade size · USD',
+    max_position_usd: 'Position cap · USD',
+    max_order_size: 'Order cap · USD',
+    max_daily_loss: 'Daily loss cap · USD',
+    max_leverage: 'Leverage cap · ×',
+    max_slippage_bps: 'Slippage cap · bps',
+    min_liquidity_depth_usd: 'Min. depth · USD',
+  };
+  const inputsAreValid = Object.keys(inputErrors).length === 0;
+  function policyField(key: PolicyInputKey) {
+    return (
+      <label className="policy-input" key={key} htmlFor={'policy-' + key}>
+        <span>{fields[key]}</span>
+        <input
+          id={'policy-' + key}
+          type="text"
+          inputMode="decimal"
+          disabled={busy}
+          value={policyInputs[key]}
+          onChange={(event) => editPolicyInput(key, event.target.value)}
+          aria-invalid={Boolean(inputErrors[key])}
+          aria-describedby={inputErrors[key] ? 'error-' + key : undefined}
+        />
+        {inputErrors[key] && (
+          <span className="field-error" id={'error-' + key}>
+            {inputErrors[key]}
+          </span>
+        )}
+      </label>
+    );
+  }
+  function openAssessmentEvidence() {
+    if (assessment) setEvidence({ kind: 'assessment', snapshot: structuredClone(assessment) });
+  }
+  function openTradeEvidence() {
+    const proposal = tradeState.proposal;
+    if (proposal && tradeChecks)
+      setEvidence({
+        kind: 'manual_trade',
+        proposal: structuredClone(proposal),
+        checks: structuredClone(tradeChecks),
+        checkedAt: tradeCheckedAt,
+        transaction: structuredClone(tradeState),
+      });
+  }
   return (
     <div className="aegis-app">
       <Header
         isPaused={policy.is_paused}
         onTogglePause={() => {
-          setPolicy((previous) => ({ ...previous, is_paused: !previous.is_paused }));
+          const next = { ...policyRef.current, is_paused: !policyRef.current.is_paused };
+          authorizationVersion.current++;
+          policyRef.current = next;
+          setPolicy(next);
+          invalidateProposal('Trading pause changed. Prepare a fresh proposal.');
           setPlaying(false);
         }}
         operationMode={mode}
         onToggleMode={(nextMode) => {
+          if (nextMode === modeRef.current) return;
           authorizationVersion.current++;
+          modeRef.current = nextMode;
+          invalidateProposal('The workspace changed. Prepare a fresh proposal.');
           setMode(nextMode);
         }}
         rpcLatencyMs={latency}
         blockNumber={block}
-        chainId={status?.chainId || 10143}
+        chainId={status?.chainId}
+        marketTimestamp={state?.market.timestamp}
+        now={now}
         walletAddress={wallet}
         walletBalanceMon={balance}
         isConnectingWallet={connecting}
-        onConnectWallet={connect}
+        onConnectWallet={() => void connect()}
         onDisconnectWallet={disconnect}
       />
       <main className="app-main">
-        <div className="context-strip">
-          <strong>
-            {mode === 'replay'
-              ? 'REPLAY LAB'
-              : `LIVE · MONAD ${status?.chainId === 143 ? 'MAINNET' : 'TESTNET'}`}
-          </strong>
-          <span>
-            {mode === 'replay'
-              ? 'Synthetic scenarios · heuristic probabilities · paper fills'
-              : 'Kuru contract data · wallet balances · reviewed execution'}
-          </span>
-          <span className="source-pill">
-            {source === 'typesafe_jev'
-              ? `Jev · ${state?.jevDecision.model}`
-              : source === 'simulated'
-                ? 'Heuristic model'
-                : 'Jev: waiting / fallback'}
-          </span>
-        </div>
+        <section className="workspace-intro" aria-labelledby="workspace-title">
+          <div>
+            <span className={'context-badge ' + (mode === 'replay' ? 'is-simulation' : 'is-live')}>
+              {mode === 'replay' ? 'Synthetic replay' : 'Live market'}
+            </span>
+            <h1 id="workspace-title">
+              {mode === 'replay' ? 'See the safeguards work.' : 'Your risk. Your rules.'}
+            </h1>
+            <p>
+              {mode === 'replay'
+                ? 'Explore a recommendation, inspect its constraints, and follow the paper outcome.'
+                : 'Inspect real market data and review an exact MON sale before you sign.'}
+            </p>
+          </div>
+          <div className="workspace-context">
+            <strong>MON / USDC</strong>
+            <span>
+              {mode === 'replay'
+                ? 'Heuristic assessment · paper execution'
+                : 'Kuru · Monad ' + (status?.chainId ?? 'loading')}
+            </span>
+            <span className="source-pill">
+              {source === 'typesafe_jev'
+                ? 'Jev assessment'
+                : source === 'simulated'
+                  ? 'Heuristic replay assessment'
+                  : 'AI assessment unavailable'}
+            </span>
+          </div>
+        </section>
         {notice && (
           <div className="notice" role="status">
             {notice}
@@ -666,191 +892,171 @@ export const Terminal: React.FC = () => {
             {marketError}
           </div>
         )}
-        <section className="mandate terminal-card">
-          <div className="mandate-heading">
-            <div>
-              <strong>YOUR MANDATE</strong>
-              <p>Bounded MON exposure. Every action must pass these limits.</p>
-            </div>
-            <span>{policy.is_paused ? 'PAUSED' : 'POLICY ACTIVE'}</span>
-          </div>
-          <div className="policy-fields">
-            {(
-              [
-                ['max_position_usd', 'Position cap · USD'],
-                ['max_order_size', 'Order cap · USD'],
-                ['max_daily_loss', 'Daily loss cap · USD'],
-                ['max_leverage', 'Leverage cap · ×'],
-                ['max_slippage_bps', 'Slippage cap · bps'],
-                ['min_liquidity_depth_usd', 'Min. depth · USD'],
-              ] as [keyof UserPolicy, string][]
-            ).map(([key, label]) => (
-              <label key={key}>
-                {label}
-                <input
-                  disabled={busy}
-                  type="number"
-                  min="0.01"
-                  step={key === 'max_leverage' ? '0.1' : '1'}
-                  value={Number(policy[key])}
-                  onChange={(event) =>
-                    setPolicy((previous) => ({ ...previous, [key]: Number(event.target.value) }))
-                  }
-                />
-              </label>
-            ))}
-            <label>
-              Trade size · USD
-              <input
-                disabled={busy}
-                type="number"
-                min="0.01"
-                value={clip}
-                onChange={(event) => setClip(Number(event.target.value))}
-              />
-            </label>
-          </div>
-          <p className="muted-note">
-            {mode === 'live'
-              ? 'Live portfolio covers wallet MON and USDC. Perp exposure, resting orders, historical daily loss and drawdown are not indexed; unattended trading is unavailable.'
-              : 'These limits also constrain replay fills. Simulation performance is not a forecast of live returns.'}
-          </p>
-        </section>
-        {mode === 'replay' ? (
+        {mode === 'replay' && (
           <ReplayControlBar
             currentScenarioId={scenarioId}
-            onSelectScenario={setScenarioId}
+            onSelectScenario={(id) => {
+              authorizationVersion.current++;
+              invalidateProposal('The replay scenario changed. Prepare a fresh proposal.');
+              setScenarioId(id);
+            }}
             isPlaying={playing}
-            onTogglePlay={() => setPlaying((previous) => !previous)}
+            onTogglePlay={() => inputsAreValid && setPlaying((previous) => !previous)}
             onStepTick={() => void evaluate(true)}
-            onResetScenario={() => setResetVersion((previous) => previous + 1)}
+            onResetScenario={() => {
+              authorizationVersion.current++;
+              invalidateProposal('Replay reset. Prepare a fresh proposal.');
+              setResetVersion((previous) => previous + 1);
+            }}
             currentTickIndex={tickIndex}
             totalTicks={scenario.ticks.length}
           />
-        ) : (
-          <section className="live-controls terminal-card">
+        )}
+        <div className={'workspace-grid ' + mode}>
+          <div className="assessment-slot">
+            {assessment ? (
+              <JevPolicyPanel snapshot={assessment} onOpenExplainability={openAssessmentEvidence} />
+            ) : (
+              <section className="terminal-card empty-state">
+                <h2>Assessment</h2>
+                <p>{mode === 'live' ? 'Reading the Kuru market…' : 'Preparing replay…'}</p>
+              </section>
+            )}
+            {mode === 'live' && (
+              <section className="live-controls terminal-card" aria-label="Assessment controls">
+                <p>
+                  {status?.inferenceEnabled
+                    ? 'Each Jev evaluation uses API credits.'
+                    : 'AI assessments are disabled. Market reads and trade simulation remain available.'}
+                </p>
+                {status?.inferenceAccess === 'owner' && status.inferenceEnabled && (
+                  <label>
+                    Owner access
+                    <input
+                      type="password"
+                      autoComplete="off"
+                      value={ownerAccess}
+                      onChange={(event) => setOwnerAccess(event.target.value)}
+                    />
+                  </label>
+                )}
+                <div className="control-actions">
+                  <button
+                    className="primary-button"
+                    disabled={
+                      busy ||
+                      !inputsAreValid ||
+                      !status?.inferenceEnabled ||
+                      (status.inferenceAccess === 'owner' && !ownerAccess)
+                    }
+                    onClick={() => void evaluate()}
+                  >
+                    Evaluate with Jev
+                  </button>
+                  <button
+                    disabled={busy || !inputsAreValid}
+                    onClick={() => void evaluate(false, false)}
+                  >
+                    Inspect safety state
+                  </button>
+                </div>
+              </section>
+            )}
+          </div>
+          {assessment && (
+            <div className="decision-slot">
+              <DecisionFlow snapshot={assessment} onOpenEvidence={openAssessmentEvidence} />
+            </div>
+          )}
+          {mode === 'live' && (
+            <div className="trade-slot">
+              <TradeReview
+                transaction={tradeState}
+                prepared={prepared}
+                now={now}
+                chainId={status?.chainId}
+                minimumMon={minimumMon}
+                tradeSizeUsd={clip}
+                busy={busy}
+                hasWallet={Boolean(wallet)}
+                canPrepare={Boolean(wallet && status && !policy.is_paused && inputsAreValid)}
+                canSubmit={Boolean(
+                  wallet &&
+                    status &&
+                    !policy.is_paused &&
+                    inputsAreValid &&
+                    prepared &&
+                    prepared.id === tradeState.proposal?.id
+                )}
+                onPrepare={() => void prepareReduction()}
+                onSubmit={() => void submitReduction()}
+                onInspect={openTradeEvidence}
+                onCheckConfirmation={() => void checkConfirmation()}
+              />
+            </div>
+          )}
+          {state && (
+            <div className="market-slot">
+              <MarketPanel
+                key={mode + '-' + scenarioId + '-' + resetVersion}
+                market={state.market}
+                live={mode === 'live'}
+              />
+            </div>
+          )}
+          {state && (
+            <div className="portfolio-slot">
+              <PortfolioPanel
+                hasWallet={Boolean(wallet)}
+                position={state.position}
+                orders={state.orders}
+                policy={policy}
+                risk={state.risk}
+                live={mode === 'live'}
+              />
+            </div>
+          )}
+        </div>
+        <section className="mandate terminal-card" id="mandate" aria-labelledby="mandate-title">
+          <div className="panel-heading">
             <div>
-              <strong>Live policy review</strong>
-              <p>
-                {status?.inferenceEnabled
-                  ? 'Evaluate the current snapshot with Jev. Each click uses API credits.'
-                  : 'Live Jev is disabled until API credit usage is approved and JEV_ENABLE_LIVE=true is set.'}
-              </p>
+              <h2 id="mandate-title">Your mandate</h2>
+              <p>Hard limits apply independently of the assessment.</p>
             </div>
-            {status?.inferenceAccess === 'owner' && status.inferenceEnabled && (
-              <label>
-                Owner access
-                <input
-                  type="password"
-                  autoComplete="off"
-                  value={ownerAccess}
-                  onChange={(event) => setOwnerAccess(event.target.value)}
-                />
-              </label>
+            <span className={'context-badge ' + (policy.is_paused ? 'is-blocked' : '')}>
+              {policy.is_paused ? 'Paused' : 'Session policy'}
+            </span>
+          </div>
+          <div className="policy-primary">
+            {(['trade_size', 'max_position_usd', 'max_slippage_bps'] as PolicyInputKey[]).map(
+              policyField
             )}
-            <button
-              disabled={
-                busy ||
-                !status?.inferenceEnabled ||
-                (status.inferenceAccess === 'owner' && !ownerAccess)
-              }
-              onClick={() => void evaluate()}
-            >
-              Evaluate with Jev
-            </button>
-            <button disabled={busy} onClick={() => void evaluate(false, false)}>
-              Inspect safety state
-            </button>
-          </section>
-        )}
-        {state ? (
-          <div className="terminal-grid">
-            <MarketPanel
-              key={`${mode}-${scenarioId}-${resetVersion}`}
-              market={state.market}
-              live={mode === 'live'}
-            />
-            <PortfolioPanel
-              hasWallet={Boolean(wallet)}
-              position={state.position}
-              orders={state.orders}
-              policy={policy}
-              risk={state.risk}
-              live={mode === 'live'}
-            />
-            <JevPolicyPanel
-              decision={state.jevDecision}
-              riskCheck={state.riskCheck}
-              lastTxHash={state.txHash}
-              onOpenExplainability={() => setExplain(true)}
-              auditEvent={state.auditEvent}
-            />
           </div>
-        ) : (
-          <div className="empty-state terminal-card">
-            {mode === 'live'
-              ? 'Reading the Kuru market. Inspect safety state or evaluate with Jev to open the terminal.'
-              : 'Preparing deterministic replay…'}
-          </div>
-        )}
-        {mode === 'live' && (
-          <section className="execution-card terminal-card">
-            <div className="mandate-heading">
-              <div>
-                <strong>KURU · PROTECTIVE MON REDUCTION</strong>
-                <p>
-                  User initiated · fill-or-kill · native MON → USDC · Monad{' '}
-                  {status?.chainId || 10143}
-                </p>
-              </div>
-              <button
-                disabled={!wallet || busy || policy.is_paused || !status}
-                onClick={() => void prepareReduction()}
-              >
-                Prepare & simulate
-              </button>
+          <details className="advanced-policy">
+            <summary>Advanced limits</summary>
+            <div className="policy-fields">
+              {(
+                [
+                  'max_order_size',
+                  'max_daily_loss',
+                  'max_leverage',
+                  'min_liquidity_depth_usd',
+                ] as PolicyInputKey[]
+              ).map(policyField)}
             </div>
-            <p className="muted-note">
-              {minimumMon ? `Market minimum: ${minimumMon} MON. ` : ''}A proposal does not move
-              funds. The wallet must approve the exact transaction.
+          </details>
+          <p className="muted-note">
+            Valid edits apply immediately in this session and invalidate any prepared proposal.
+            Limits reset when you reload.
+          </p>
+          {mode === 'live' && (
+            <p className="coverage-note">
+              Wallet MON and USDC are available after connection. External positions, resting
+              orders, historical loss, drawdown and trade flow are not indexed. Unattended trading
+              is unavailable.
             </p>
-            {prepared && (
-              <div className="proposal">
-                <div>
-                  <span>Sell</span>
-                  <strong>{prepared.amountMon} MON</strong>
-                </div>
-                <div>
-                  <span>Estimated output</span>
-                  <strong>{prepared.estimatedOutUsdc} USDC</strong>
-                </div>
-                <div>
-                  <span>Minimum output</span>
-                  <strong>{prepared.minOutUsdc} USDC</strong>
-                </div>
-                <div>
-                  <span>Maximum slippage</span>
-                  <strong>{prepared.slippageBps} bps</strong>
-                </div>
-                <p>
-                  Contract: {prepared.marketAddress} · Expires:{' '}
-                  {new Date(prepared.expiresAt).toLocaleTimeString()}
-                </p>
-                <button
-                  disabled={busy || policy.is_paused || Date.now() > prepared.expiresAt}
-                  onClick={() => void submitReduction()}
-                >
-                  Confirm in wallet
-                </button>
-              </div>
-            )}
-            {txState && (
-              <p className="tx-state" role="status">
-                {txState}
-              </p>
-            )}
-          </section>
-        )}
+          )}
+        </section>
         <AuditTrailPanel
           events={events}
           exportLabel={
@@ -862,40 +1068,34 @@ export const Terminal: React.FC = () => {
                   .writeText(JSON.stringify(events, null, 2))
                   .then(() =>
                     setNotice(
-                      'Session journal copied. This hosted journal clears when the page reloads.'
+                      'Session journal copied. Copy it before reloading; hosted history is session only.'
                     )
                   )
                   .catch(() =>
                     setNotice(
-                      'Clipboard access was blocked by the browser. Keep this session open to review its journal.'
+                      'Clipboard access was blocked. Keep this session open to review its journal.'
                     )
                   )
               : void api<{ savedPath: string }>('/api/audit/export', events)
-                  .then((result) => setNotice(`Audit saved to ${result.savedPath}`))
+                  .then((result) => setNotice('Audit saved to ' + result.savedPath))
                   .catch((error) => setNotice(error.message))
           }
         />
         {status?.journal === 'browser_session' && (
           <p className="muted-note">
-            This journal stays in the current browser session. Copy it before reloading; the public
-            server does not store your portfolio or mandate.
+            Hosted history stays in this browser session. Copy the journal before reloading.
           </p>
         )}
-        <footer>
-          AI proposes. Policy constrains. You control execution.{' '}
+        <footer className="app-footer">
+          <span>AI proposes. Policy constrains. You control execution.</span>
           <span>
-            {busy ? 'PROCESSING' : 'READY'} ·{' '}
-            {events.filter((event) => !event.execution_allowed).length} blocked decisions
+            {mode === 'replay'
+              ? 'Synthetic replay · no chain transactions'
+              : 'Chain reads and reviewed wallet execution'}
           </span>
         </footer>
       </main>
-      {state && (
-        <ExplainabilityModal
-          isOpen={explain}
-          onClose={() => setExplain(false)}
-          auditEvent={state.auditEvent}
-        />
-      )}
+      <ExplainabilityModal context={evidence} onClose={() => setEvidence(null)} />
     </div>
   );
 };

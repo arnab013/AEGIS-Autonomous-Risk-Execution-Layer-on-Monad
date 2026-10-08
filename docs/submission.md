@@ -2,17 +2,17 @@
 
 Working draft, 8 October 2026. Complete the missing execution and publication evidence before submitting.
 
-| Field              | Value                                                                                                                            |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| Name               | Aegis                                                                                                                            |
-| One-liner          | A MON/USDC risk terminal that checks user limits before a wallet-reviewed trade                                                  |
-| Track              | Onchain Finance & Trading                                                                                                        |
-| Event              | [Monad Metropolis](https://monad.xyz/developers/hackathons/metropolis)                                                           |
-| Deadline           | 14 October 2026, 03:59 UTC / 05:59 CEST in Paris; confirm in the registered project                                              |
-| Public app         | [Cloudflare app](https://aegis-risk-terminal.himaloy2608.workers.dev)                                                            |
-| Repository         | [Selected repository](https://github.com/arnab013/AEGIS-Autonomous-Risk-Execution-Layer-on-Monad); push pending connector access |
-| Demo / pitch video | Pending                                                                                                                          |
-| Judge access       | No login for public market, replay or sale simulation; hosted paid inference disabled                                            |
+| Field              | Value                                                                                                                                           |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Name               | Aegis                                                                                                                                           |
+| One-liner          | A MON/USDC risk terminal that checks user limits before a wallet-reviewed trade                                                                 |
+| Track              | Onchain Finance & Trading                                                                                                                       |
+| Event              | [Monad Metropolis](https://monad.xyz/developers/hackathons/metropolis)                                                                          |
+| Deadline           | 14 October 2026, 03:59 UTC / 05:59 CEST in Paris; confirm in the registered project                                                             |
+| Public app         | [Cloudflare app](https://aegis.himaloy2608.workers.dev)                                                                                         |
+| Repository         | [Selected repository](https://github.com/arnab013/AEGIS-Autonomous-Risk-Execution-Layer-on-Monad); release branch: codex/aegis-risk-control-mvp |
+| Demo / pitch video | Pending                                                                                                                                         |
+| Judge access       | No login for public market, replay or sale simulation; hosted paid inference disabled                                                           |
 
 The [official Rules v3](https://hackathon.monad.xyz/api/v1/policies/current) require licensed public GitHub source, build-window history, attribution, AI-tool disclosure, Monad deployment evidence and a public demo of at most three minutes. Follow these rules despite the marketing FAQ's more permissive open-source wording. See [requirements](hackathon_requirements.md).
 

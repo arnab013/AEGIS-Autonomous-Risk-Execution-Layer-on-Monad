@@ -43,9 +43,15 @@ Mainnet reads and simulation have passed. The documented testnet market lacked b
 
 ## Cloudflare hosting
 
-The [public app](https://aegis-risk-terminal.himaloy2608.workers.dev) runs as aegis-risk-terminal in the user's Cloudflare account. This is a workers.dev subdomain, rather than a purchased domain registration. No plan upgrade or paid storage service was created.
+The [public app](https://aegis.himaloy2608.workers.dev) runs as `aegis` in the user's Cloudflare account. This keeps the existing `himaloy2608` account subdomain. The address is a workers.dev subdomain, rather than a purchased domain registration. No plan upgrade or paid storage service was created.
 
-Run `npm run build:cloudflare` after sourcing setup_env.ps1. It typechecks the frontend and Worker, builds dist, then bundles the API and three static files into .local/artifacts/cloudflare/worker.mjs. wrangler.jsonc records the Worker name and compatibility date. The deployed module was uploaded through the managed Cloudflare connector; no Cloudflare credential was exported.
+Run `npm run build:cloudflare` after sourcing setup_env.ps1. It typechecks the frontend and Worker, builds dist, then bundles the API and static files into `.local/artifacts/cloudflare/worker.mjs`. `wrangler.jsonc` records the Worker name and compatibility date. The module is uploaded through the managed Cloudflare connector; no Cloudflare credential is exported.
+
+The build also prepares `.local/artifacts/cloudflare/legacy-worker.mjs` for `aegis-risk-terminal`. Deploy and verify `aegis` first. Only then update the previous Worker with this compatibility bundle. It redirects GET/HEAD page navigation with an explicit HTML Accept header to the new HTTPS address, preserving the path and query. API requests, static files and other methods keep using the previous origin. Prior hashed assets are retained in the ignored `legacy-assets.json` cache so already-open pages can still request them. Preserve that cache and the previous deployed module before a rebuild; an unverified new address must never receive the old address's traffic.
+
+The 8 October rollout was verified with `node scripts/verify-rollout.mjs --legacy` after sourcing the project environment. Both origins passed actual read-only sale simulation; redirect paths, query strings and original hashed asset contents matched.
+
+For rollback, restore the previous deployed Worker version on `aegis-risk-terminal`. Its version ID is preserved in the ignored `.local/artifacts/cloudflare/rollout-recovery.json`. Deploy that version at 100 percent through the managed connector and return public links to that address. The redirect is sent with `Cache-Control: no-store` so a browser does not retain it as a permanent routing decision. Recheck the app, status, market, simulation and an old hashed asset after either rollout or rollback.
 
 The module uses only features available on the [Workers Free plan](https://developers.cloudflare.com/workers/platform/limits/). Because static files are embedded, each asset request also invokes the Worker and counts against the Free plan's 100,000 daily requests. The terminal polls every ten seconds on this host and pauses polling when its browser tab is hidden. The billing/subscription endpoint was not available through the connector, so an account billing-plan check is still needed before claiming the account itself has no paid subscription.
 
@@ -55,7 +61,7 @@ Paid inference is hard-disabled even if someone supplies an enable flag or key. 
 
 Hosted events stay in memory in the current browser session. Copy session JSON before reloading. The Worker does not store portfolios, mandates or journals; Node's hash-chain journal remains a local feature.
 
-The selected source repository is [AEGIS-Autonomous-Risk-Execution-Layer-on-Monad](https://github.com/arnab013/AEGIS-Autonomous-Risk-Execution-Layer-on-Monad). Git origin points there, but the connector returns 404 until repository access is granted. No source has been pushed.
+The selected source repository is [AEGIS-Autonomous-Risk-Execution-Layer-on-Monad](https://github.com/arnab013/AEGIS-Autonomous-Risk-Execution-Layer-on-Monad). Git origin points there. The GitHub connector returned 404, but existing noninteractive Git credentials provide access. The release branch is `codex/aegis-risk-control-mvp`; public repository visibility still needs confirmation for the competition.
 
 Aegis uses existing Kuru contracts. Submission still needs a real approved transaction and matching receipt/output. PolicyGuard is separate and has only local EVM deployment; it is not required for the direct wallet workflow.
 

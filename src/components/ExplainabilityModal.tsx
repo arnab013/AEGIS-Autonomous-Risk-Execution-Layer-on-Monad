@@ -1,165 +1,442 @@
-import React from 'react';
-import { X, Check, AlertTriangle, ShieldCheck } from './icons.tsx';
-import { AuditEvent } from '../types/index.ts';
+import React, { useEffect, useId, useRef } from 'react';
+import { ExternalLink, ShieldCheck, X } from './icons.tsx';
+import {
+  actionLabel,
+  assessmentProvenance,
+  explorerTxUrl,
+  type EvidenceContext,
+} from '../ui/evidence.ts';
+import type { RiskCheckResult } from '../types/index.ts';
+import { describePolicyCheck } from '../ui/policyChecks.ts';
 
 interface ExplainabilityModalProps {
-  isOpen: boolean;
+  context: EvidenceContext | null;
   onClose: () => void;
-  auditEvent: AuditEvent;
 }
 
-export const ExplainabilityModal: React.FC<ExplainabilityModalProps> = ({
-  isOpen,
-  onClose,
-  auditEvent,
-}) => {
-  if (!isOpen || !auditEvent) return null;
+function PolicyChecks({ checks }: { checks: RiskCheckResult }) {
+  return (
+    <>
+      <div className={'policy-verdict' + (checks.allowed ? '' : ' is-blocked')}>
+        <strong>{checks.allowed ? 'Local policy checks passed' : 'Blocked by local policy'}</strong>
+      </div>
+      <ul className="policy-check-list">
+        {Object.entries(checks.checks).map(([name, check]) => {
+          const presentation = describePolicyCheck(name, check);
+          return (
+            <li className="policy-check-item" key={name}>
+              <span
+                className={
+                  'check-status' +
+                  (presentation.blocked
+                    ? ' is-blocked'
+                    : presentation.status === 'Not applicable'
+                      ? ' is-neutral'
+                      : '')
+                }
+              >
+                {presentation.status}
+              </span>
+              <span>
+                <strong>{name.replaceAll('_', ' ')}</strong>
+                <span>{presentation.message}</span>
+              </span>
+            </li>
+          );
+        })}
+        {!Object.keys(checks.checks).length && <li>Recorded policy checks are unavailable.</li>}
+      </ul>
+      {!!checks.violations.length && (
+        <p className="evidence-warning">{checks.violations.join('; ')}</p>
+      )}
+    </>
+  );
+}
 
-  const factors = auditEvent.factors || {
-    volatility_percentile: 0,
-    sell_imbalance: 0,
-    spot_exposure_utilization: 0,
-    p_selected_action: 0,
-    p_high_or_critical_risk: 0,
-    policy_permitted: true,
-    position_limit_satisfied: true,
-  };
-  const selected_action = auditEvent.selected_action || 'hold';
-  const execution_allowed = auditEvent.execution_allowed ?? true;
+export const ExplainabilityModal: React.FC<ExplainabilityModalProps> = ({ context, onClose }) => {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const returnFocus = useRef<HTMLElement | null>(null);
+  const titleId = useId();
+  const open = context !== null;
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (open && !dialog.open) {
+      returnFocus.current =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      dialog.showModal();
+      dialog.querySelector<HTMLButtonElement>('button')?.focus();
+    } else if (!open && dialog.open) {
+      dialog.close();
+      returnFocus.current?.focus();
+    }
+  }, [open]);
+
+  useEffect(
+    () => () => {
+      dialogRef.current?.close();
+      if (returnFocus.current?.isConnected) returnFocus.current.focus();
+    },
+    []
+  );
+
+  const assessment = context?.kind === 'assessment' ? context.snapshot : null;
+  const manual = context?.kind === 'manual_trade' ? context : null;
+  const provenance = assessment ? assessmentProvenance(assessment.decision) : null;
+  const transactionUrl = manual?.transaction.hash
+    ? explorerTxUrl(manual.transaction.hash, manual.proposal.chainId)
+    : undefined;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4">
-      <div className="bg-[#0e1118] border border-[#232938] rounded-lg max-w-lg w-full overflow-hidden shadow-2xl font-mono text-xs">
-        <div className="terminal-header flex items-center justify-between p-3">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-[#7b3fe4]" />
-            <span className="font-bold text-white uppercase tracking-wider">
-              STRUCTURED DECISION EVIDENCE // {selected_action.replace('_', ' ')}
-            </span>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-[#64748b] hover:text-white p-1 rounded transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-        <div className="p-4 space-y-4">
-          <div className="bg-[#141822] p-3 rounded border border-[#1e2433] space-y-2">
-            <div className="text-[10px] text-[#64748b] uppercase">
-              Deterministic Signals & Market Inputs
-            </div>
-            <div className="space-y-1.5 text-white">
-              <div className="flex justify-between">
-                <span className="text-[#94a3b8]">Volatility Stress Index:</span>
-                <span className="font-bold">{factors.volatility_percentile} / 100</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[#94a3b8]">Sell-Side Orderbook Imbalance:</span>
-                <span className="font-bold text-rose-400">
-                  {(factors.sell_imbalance * 100).toFixed(0)}%
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[#94a3b8]">Spot Exposure Utilization:</span>
-                <span className="font-bold">{factors.spot_exposure_utilization}%</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-[#141822] p-3 rounded border border-[#1e2433] space-y-2">
-            <div className="text-[10px] text-[#64748b] uppercase">
-              {auditEvent.decision_source === 'simulated'
-                ? 'Heuristic replay probabilities'
-                : 'Decision probabilities'}
-            </div>
-            <div className="space-y-1.5 text-white">
-              <div className="flex justify-between">
-                <span className="text-[#94a3b8]">P({selected_action}):</span>
-                <span className="font-bold text-[#a77df8]">
-                  {(factors.p_selected_action * 100).toFixed(0)}%
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[#94a3b8]">P(High / Critical Risk):</span>
-                <span className="font-bold text-amber-400">
-                  {(factors.p_high_or_critical_risk * 100).toFixed(0)}%
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[#94a3b8]">Application Confidence Score:</span>
-                <span className="font-bold text-emerald-400">
-                  {(auditEvent.confidence * 100).toFixed(0)}%
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-[#141822] p-3 rounded border border-[#1e2433] space-y-2">
-            <div className="text-[10px] text-[#64748b] uppercase">
-              Hard Deterministic Constraints
-            </div>
-            <div className="space-y-1.5">
-              <div className="flex justify-between items-center">
-                <span className="text-[#94a3b8]">User Policy Mandate Permitted:</span>
-                <span
-                  className={
-                    factors.policy_permitted
-                      ? 'text-emerald-400 font-bold flex items-center gap-1'
-                      : 'text-rose-400 font-bold flex items-center gap-1'
-                  }
-                >
-                  {factors.policy_permitted ? (
-                    <Check className="w-3.5 h-3.5" />
-                  ) : (
-                    <AlertTriangle className="w-3.5 h-3.5" />
-                  )}
-                  {factors.policy_permitted ? 'YES' : 'NO'}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-[#94a3b8]">Position Limit Invariant Satisfied:</span>
-                <span
-                  className={
-                    factors.position_limit_satisfied
-                      ? 'text-emerald-400 font-bold flex items-center gap-1'
-                      : 'text-rose-400 font-bold flex items-center gap-1'
-                  }
-                >
-                  {factors.position_limit_satisfied ? (
-                    <Check className="w-3.5 h-3.5" />
-                  ) : (
-                    <AlertTriangle className="w-3.5 h-3.5" />
-                  )}
-                  {factors.position_limit_satisfied ? 'YES' : 'VIOLATED'}
-                </span>
-              </div>
-            </div>
-          </div>
-          <div
-            className={`p-3 rounded border text-center ${
-              execution_allowed
-                ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-300'
-                : 'bg-rose-950/30 border-rose-500/40 text-rose-300'
-            }`}
-          >
-            <span className="font-bold block uppercase tracking-wider">
-              {execution_allowed
-                ? 'VERDICT: LOCAL POLICY CHECKS PASSED'
-                : 'VERDICT: BLOCKED BY RISK GATE'}
-            </span>
-            <span className="text-[11px] text-[#cbd5e1] block mt-1">
-              {auditEvent.execution_mode === 'paper'
-                ? 'Paper execution only.'
-                : 'Wallet execution requires a fresh trade review.'}{' '}
-              State Hash:{' '}
-              <span className="text-white" style={{ overflowWrap: 'anywhere' }}>
-                {auditEvent.market_state_hash}
+    <dialog
+      ref={dialogRef}
+      className="evidence-dialog"
+      aria-labelledby={titleId}
+      aria-describedby={titleId + '-description'}
+      onKeyDown={(event) => {
+        if (event.key !== 'Tab') return;
+        const dialog = event.currentTarget;
+        const focusable = Array.from(
+          dialog.querySelectorAll<HTMLElement>(
+            'button, a[href], input, select, textarea, summary, [tabindex]'
+          )
+        ).filter(
+          (element) =>
+            element.tabIndex >= 0 &&
+            !element.matches(':disabled') &&
+            element.getClientRects().length > 0
+        );
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const active = document.activeElement;
+        if (!first) {
+          event.preventDefault();
+          dialog.focus();
+        } else if (
+          event.shiftKey &&
+          (active === first || !focusable.includes(active as HTMLElement))
+        ) {
+          event.preventDefault();
+          last.focus();
+        } else if (
+          !event.shiftKey &&
+          (active === last || !focusable.includes(active as HTMLElement))
+        ) {
+          event.preventDefault();
+          first.focus();
+        }
+      }}
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+    >
+      {context && (
+        <>
+          <header className="evidence-header">
+            <div>
+              <span className="assessment-eyebrow">
+                <ShieldCheck aria-hidden="true" /> Evidence
               </span>
-            </span>
+              <h2 id={titleId}>
+                {manual ? 'User requested MON reduction' : 'Assessment evidence'}
+              </h2>
+            </div>
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="Close evidence"
+              onClick={onClose}
+            >
+              <X aria-hidden="true" />
+            </button>
+          </header>
+          <div className="evidence-body">
+            <p id={titleId + '-description'} className="assessment-note">
+              {manual
+                ? 'This trade was initiated by you. Its proposal, policy checks and transaction record are independent of the AI assessment.'
+                : 'The original observation and its result are retained together. Values below are from this assessment, before paper execution.'}
+            </p>
+            {assessment && (
+              <>
+                <section className="evidence-section">
+                  <h3>Captured observation</h3>
+                  <dl className="evidence-facts">
+                    <div>
+                      <dt>Mode</dt>
+                      <dd>
+                        {assessment.mode === 'replay' ? 'Heuristic replay' : 'Live observation'}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Observed</dt>
+                      <dd>{new Date(assessment.observedAt).toLocaleString()}</dd>
+                    </div>
+                    <div>
+                      <dt>Evaluated</dt>
+                      <dd>{new Date(assessment.evaluatedAt).toLocaleString()}</dd>
+                    </div>
+                    <div>
+                      <dt>Pair</dt>
+                      <dd>{assessment.input.market.pair}</dd>
+                    </div>
+                    <div>
+                      <dt>Midpoint</dt>
+                      <dd>{assessment.input.market.mid_price} USDC / MON</dd>
+                    </div>
+                    <div>
+                      <dt>Spread</dt>
+                      <dd>{assessment.input.market.spread_bps} bps</dd>
+                    </div>
+                    <div>
+                      <dt>Bid depth within 25 bps</dt>
+                      <dd>{assessment.input.market.bid_depth_25bps} USD</dd>
+                    </div>
+                    <div>
+                      <dt>Ask depth within 25 bps</dt>
+                      <dd>{assessment.input.market.ask_depth_25bps} USD</dd>
+                    </div>
+                    <div>
+                      <dt>Spot exposure before execution</dt>
+                      <dd>{assessment.input.position.spot_exposure_usd} USD</dd>
+                    </div>
+                    <div>
+                      <dt>Perpetual exposure</dt>
+                      <dd>
+                        {assessment.mode === 'live'
+                          ? 'Unavailable'
+                          : assessment.input.position.perp_exposure_usd + ' USD'}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Open orders</dt>
+                      <dd>
+                        {assessment.mode === 'live'
+                          ? 'Unavailable'
+                          : assessment.input.orders.open_orders_count}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Daily realized PnL</dt>
+                      <dd>
+                        {assessment.mode === 'live'
+                          ? 'Unavailable'
+                          : assessment.input.position.realized_pnl_today + ' USD'}
+                      </dd>
+                    </div>
+                  </dl>
+                  {assessment.mode === 'live' && (
+                    <p className="evidence-warning">
+                      Live coverage includes the supplied wallet balances and order book. External
+                      positions, orders, aggressive flow and historical loss are unavailable. Their
+                      zero-valued payload fields are placeholders, not observed zeros.
+                    </p>
+                  )}
+                </section>
+                <section className="evidence-section">
+                  <h3>
+                    {provenance === 'fallback'
+                      ? 'AI assessment unavailable'
+                      : actionLabel(assessment.decision.selected_action)}
+                  </h3>
+                  <p>
+                    {provenance === 'fallback'
+                      ? assessment.decision.error ||
+                        'No model result was available. The safe fallback holds.'
+                      : provenance === 'heuristic'
+                        ? 'Deterministic heuristic replay; no model inference.'
+                        : 'Jev · ' + (assessment.decision.model ?? 'model name unavailable')}
+                    {assessment.decision.source === 'cached' ? ' · cached result' : ''}
+                  </p>
+                  {provenance !== 'fallback' && (
+                    <>
+                      <h4>
+                        {provenance === 'heuristic'
+                          ? 'Heuristic action weights'
+                          : 'Relative action probabilities'}
+                      </h4>
+                      <dl className="evidence-facts">
+                        {Object.entries(assessment.decision.action_probabilities).map(
+                          ([action, probability]) => (
+                            <div key={action}>
+                              <dt>
+                                {actionLabel(action as typeof assessment.decision.selected_action)}
+                              </dt>
+                              <dd>{(probability * 100).toFixed(1)}%</dd>
+                            </div>
+                          )
+                        )}
+                      </dl>
+                      <p className="assessment-note">
+                        {provenance === 'heuristic'
+                          ? 'These are illustrative replay weights.'
+                          : 'Choice probabilities compare the available actions. They do not estimate profit or authorize execution.'}
+                      </p>
+                    </>
+                  )}
+                </section>
+                <section className="evidence-section">
+                  <h3>Policy checks</h3>
+                  <PolicyChecks checks={assessment.riskCheck} />
+                </section>
+                <section className="evidence-section">
+                  <h3>Recorded outcome</h3>
+                  <p>{assessment.auditEvent.reason}</p>
+                  <p>
+                    {assessment.executionMode === 'observe'
+                      ? 'Observation only. No transaction was submitted by this assessment.'
+                      : assessment.paperExecution?.status === 'filled'
+                        ? 'Paper fill. No wallet or chain transaction was used.'
+                        : assessment.paperExecution?.status === 'cancelled'
+                          ? 'Paper order cancellation. No chain transaction was used.'
+                          : 'No paper trade was executed.'}
+                  </p>
+                  {assessment.paperExecution?.status === 'filled' && (
+                    <dl className="evidence-facts">
+                      <div>
+                        <dt>Paper quantity</dt>
+                        <dd>{assessment.paperExecution.filledSize} MON</dd>
+                      </div>
+                      <div>
+                        <dt>Average paper fill price</dt>
+                        <dd>{assessment.paperExecution.price} USDC / MON</dd>
+                      </div>
+                      <div>
+                        <dt>Paper notional</dt>
+                        <dd>{assessment.paperExecution.notionalUsd} USD</dd>
+                      </div>
+                    </dl>
+                  )}
+                  {assessment.paperExecution && (
+                    <p className="assessment-note">{assessment.paperExecution.assumptions}</p>
+                  )}
+                </section>
+                <details className="evidence-section">
+                  <summary>Original input and state reference</summary>
+                  <p className="evidence-hash">{assessment.auditEvent.market_state_hash}</p>
+                  <pre>{JSON.stringify(assessment.input, null, 2)}</pre>
+                </details>
+              </>
+            )}
+            {manual && (
+              <>
+                <section className="evidence-section">
+                  <h3>Simulated trade proposal</h3>
+                  <dl className="evidence-facts">
+                    <div>
+                      <dt>Sell</dt>
+                      <dd>{manual.proposal.amountMon} MON</dd>
+                    </div>
+                    <div>
+                      <dt>Estimated output</dt>
+                      <dd>{manual.proposal.estimatedOutUsdc} USDC</dd>
+                    </div>
+                    <div>
+                      <dt>Minimum output</dt>
+                      <dd>{manual.proposal.minOutUsdc} USDC</dd>
+                    </div>
+                    <div>
+                      <dt>Slippage cap</dt>
+                      <dd>{manual.proposal.slippageBps} bps</dd>
+                    </div>
+                    <div>
+                      <dt>Network</dt>
+                      <dd>
+                        {manual.proposal.chainId === 143
+                          ? 'Monad mainnet'
+                          : manual.proposal.chainId === 10143
+                            ? 'Monad testnet'
+                            : 'Network ' + manual.proposal.chainId}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Simulation block</dt>
+                      <dd>{manual.proposal.snapshotBlockNumber}</dd>
+                    </div>
+                    <div>
+                      <dt>Simulation</dt>
+                      <dd>
+                        {manual.proposal.simulation === 'passed'
+                          ? 'Passed · eth_call'
+                          : 'Unavailable'}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Gas estimate</dt>
+                      <dd>{manual.proposal.gasEstimate} gas units</dd>
+                    </div>
+                    <div>
+                      <dt>Proposal expires</dt>
+                      <dd>{new Date(manual.proposal.expiresAt).toLocaleString()}</dd>
+                    </div>
+                    <div>
+                      <dt>Policy checked</dt>
+                      <dd>{new Date(manual.checkedAt).toLocaleString()}</dd>
+                    </div>
+                    <div>
+                      <dt>Wallet</dt>
+                      <dd className="evidence-hash">{manual.proposal.account}</dd>
+                    </div>
+                    <div>
+                      <dt>Kuru contract</dt>
+                      <dd className="evidence-hash">{manual.proposal.marketAddress}</dd>
+                    </div>
+                  </dl>
+                  <p className="assessment-note">
+                    Simulation does not confirm a fill. Minimum output and fill-or-kill are enforced
+                    on chain. Proposal expiry is an application check; reject a stale wallet prompt.
+                  </p>
+                </section>
+                <section className="evidence-section">
+                  <h3>Trade policy checks</h3>
+                  <PolicyChecks checks={manual.checks} />
+                </section>
+                <section className="evidence-section">
+                  <h3>Transaction record</h3>
+                  <dl className="evidence-facts">
+                    <div>
+                      <dt>Status</dt>
+                      <dd>{manual.transaction.status.replaceAll('_', ' ')}</dd>
+                    </div>
+                    <div>
+                      <dt>Confirmed output</dt>
+                      <dd>
+                        {manual.transaction.status === 'confirmed' &&
+                        manual.transaction.receivedUsdc
+                          ? manual.transaction.receivedUsdc + ' USDC'
+                          : 'No confirmed output recorded'}
+                      </dd>
+                    </div>
+                  </dl>
+                  {manual.transaction.detail && <p>{manual.transaction.detail}</p>}
+                  {manual.transaction.hash ? (
+                    transactionUrl ? (
+                      <a
+                        href={transactionUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="evidence-hash"
+                      >
+                        {manual.transaction.hash} <ExternalLink aria-hidden="true" />
+                      </a>
+                    ) : (
+                      <p className="evidence-hash">{manual.transaction.hash}</p>
+                    )
+                  ) : (
+                    <p>No transaction submitted.</p>
+                  )}
+                </section>
+                <details className="evidence-section">
+                  <summary>Proposal reference and exact transaction</summary>
+                  <p className="evidence-hash">{manual.proposal.id}</p>
+                  <pre>{JSON.stringify(manual.proposal.transaction, null, 2)}</pre>
+                </details>
+              </>
+            )}
           </div>
-        </div>
-      </div>
-    </div>
+        </>
+      )}
+    </dialog>
   );
 };

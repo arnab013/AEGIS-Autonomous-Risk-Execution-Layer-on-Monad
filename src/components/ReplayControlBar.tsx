@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, Pause, SkipForward, RotateCcw, Info } from './icons.tsx';
+import { Play, Pause, SkipForward, RotateCcw } from './icons.tsx';
 import { REPLAY_SCENARIOS } from '../data/scenarios.ts';
 
 interface ReplayControlBarProps {
@@ -13,7 +13,7 @@ interface ReplayControlBarProps {
   totalTicks: number;
 }
 
-export const ReplayControlBar: React.FC<ReplayControlBarProps> = ({
+export function ReplayControlBar({
   currentScenarioId,
   onSelectScenario,
   isPlaying,
@@ -22,80 +22,48 @@ export const ReplayControlBar: React.FC<ReplayControlBarProps> = ({
   onResetScenario,
   currentTickIndex,
   totalTicks,
-}) => {
-  const currentScenario =
-    REPLAY_SCENARIOS.find((s) => s.id === currentScenarioId) || REPLAY_SCENARIOS[0];
-
+}: ReplayControlBarProps) {
+  const current =
+    REPLAY_SCENARIOS.find((item) => item.id === currentScenarioId) ?? REPLAY_SCENARIOS[0];
   return (
-    <div className="terminal-card p-3 space-y-2.5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-[10px] uppercase font-mono text-[#64748b] mr-1">
-            Demo Scenarios:
+    <section className="replay-controls terminal-card" aria-label="Replay controls">
+      <div className="replay-toolbar">
+        <label htmlFor="replay-scenario">
+          Scenario
+          <select
+            id="replay-scenario"
+            value={currentScenarioId}
+            onChange={(event) => onSelectScenario(event.target.value)}
+          >
+            {REPLAY_SCENARIOS.map((scenario, index) => (
+              <option value={scenario.id} key={scenario.id}>
+                {index + 1}. {scenario.title.split(':')[1]?.trim() || scenario.title}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="replay-actions">
+          <span className="replay-tick">
+            Step {currentTickIndex + 1} / {totalTicks}
           </span>
-          {REPLAY_SCENARIOS.map((sc, index) => {
-            const isSelected = sc.id === currentScenarioId;
-            return (
-              <button
-                key={sc.id}
-                onClick={() => onSelectScenario(sc.id)}
-                className={`px-2.5 py-1 rounded text-xs font-mono transition-all ${
-                  isSelected
-                    ? 'bg-[#7b3fe4] text-white font-bold shadow-xs'
-                    : 'bg-[#141822] text-[#94a3b8] hover:text-white hover:bg-[#1c2230] border border-[#1e2433]'
-                }`}
-              >
-                {index + 1}. {sc.title.split(':')[1]?.trim() || sc.title}
-              </button>
-            );
-          })}
-        </div>
-        <div className="flex items-center gap-2 font-mono text-xs">
-          <span className="text-[#64748b] text-[11px]">
-            Tick: <span className="text-white font-bold">{currentTickIndex + 1}</span> /{' '}
-            {totalTicks}
-          </span>
-
-          <button
-            onClick={onTogglePlay}
-            className="flex items-center gap-1 px-3 py-1 bg-[#1a202c] hover:bg-[#252d3d] text-white rounded border border-[#2d3748] transition-colors"
-          >
-            {isPlaying ? (
-              <Pause className="w-3.5 h-3.5 text-amber-400" />
-            ) : (
-              <Play className="w-3.5 h-3.5 text-emerald-400" />
-            )}
-            <span>{isPlaying ? 'Pause' : 'Play'}</span>
+          <button onClick={onTogglePlay}>
+            {isPlaying ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
+            {isPlaying ? 'Pause' : 'Play'}
           </button>
-
-          <button
-            onClick={onStepTick}
-            className="flex items-center gap-1 px-2.5 py-1 bg-[#1a202c] hover:bg-[#252d3d] text-white rounded border border-[#2d3748] transition-colors"
-            title="Advance 1 Tick"
-          >
-            <SkipForward className="w-3.5 h-3.5 text-[#a77df8]" />
-            <span>Step</span>
+          <button onClick={onStepTick}>
+            <SkipForward aria-hidden="true" />
+            Step
           </button>
-
-          <button
-            onClick={onResetScenario}
-            className="flex items-center gap-1 px-2.5 py-1 bg-[#1a202c] hover:bg-[#252d3d] text-[#94a3b8] hover:text-white rounded border border-[#2d3748] transition-colors"
-            title="Reset Scenario"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Reset</span>
+          <button onClick={onResetScenario}>
+            <RotateCcw aria-hidden="true" />
+            Reset
           </button>
         </div>
       </div>
-      <div className="bg-[#12151f] p-2.5 rounded border border-[#1a1f2c] flex items-start gap-2 text-xs font-mono">
-        <Info className="w-4 h-4 text-[#a77df8] shrink-0 mt-0.5" />
-        <div className="space-y-0.5">
-          <div className="text-white font-semibold">{currentScenario.title}</div>
-          <div className="text-[#94a3b8] text-[11px] leading-relaxed">
-            {currentScenario.narrative}
-          </div>
-        </div>
-      </div>
-    </div>
+      <details className="replay-description">
+        <summary>About this scenario</summary>
+        <p>{current.narrative}</p>
+      </details>
+    </section>
   );
-};
+}

@@ -1,211 +1,213 @@
 import React from 'react';
-import {
-  Cpu,
-  ShieldAlert,
-  CheckCircle2,
-  XCircle,
-  ExternalLink,
-  HelpCircle,
-  AlertOctagon,
-} from './icons.tsx';
-import { JevDecisionState, RiskCheckResult, AuditEvent, TradingAction } from '../types/index.ts';
+import { CheckCircle2, Cpu, HelpCircle, ShieldAlert } from './icons.tsx';
+import { actionLabel, assessmentProvenance, type AssessmentSnapshot } from '../ui/evidence.ts';
+import type { TradingAction } from '../types/index.ts';
+import { describePolicyCheck } from '../ui/policyChecks.ts';
 
 interface JevPolicyPanelProps {
-  decision: JevDecisionState;
-  riskCheck: RiskCheckResult;
-  lastTxHash?: string;
+  snapshot: AssessmentSnapshot;
   onOpenExplainability: () => void;
-  auditEvent: AuditEvent;
+}
+
+function Distribution({
+  values,
+  selected,
+  actions = false,
+}: {
+  values: Record<string, number>;
+  selected?: string;
+  actions?: boolean;
+}) {
+  return (
+    <ul className="probability-list">
+      {Object.entries(values)
+        .sort(([, a], [, b]) => b - a)
+        .map(([label, probability]) => (
+          <li className="probability-row" key={label}>
+            <div className="probability-label">
+              <span>
+                {actions ? actionLabel(label as TradingAction) : label.replaceAll('_', ' ')}
+              </span>
+              <strong>{(probability * 100).toFixed(1)}%</strong>
+            </div>
+            <div className="probability-track" aria-hidden="true">
+              <span
+                className={'probability-fill' + (label === selected ? ' is-selected' : '')}
+                style={{ width: probability * 100 + '%' }}
+              />
+            </div>
+          </li>
+        ))}
+    </ul>
+  );
 }
 
 export const JevPolicyPanel: React.FC<JevPolicyPanelProps> = ({
-  decision,
-  riskCheck,
-  lastTxHash,
+  snapshot,
   onOpenExplainability,
-  auditEvent,
 }) => {
-  const isExecutionBlocked = !riskCheck.allowed;
-
-  const actionLabels: Record<TradingAction, string> = {
-    hedge: 'Protective Hedge',
-    reduce_position: 'Reduce Position',
-    hold: 'Hold / Maintain',
-    increase_position: 'Increase Position',
-    cancel_orders: 'Cancel Stale Orders',
-  };
+  const { decision, riskCheck, auditEvent } = snapshot;
+  const provenance = assessmentProvenance(decision);
+  const fallback = provenance === 'fallback';
+  const heuristic = provenance === 'heuristic';
+  const failedChecks = Object.values(riskCheck.checks).filter(
+    (check) => check.applies !== false && !check.passed
+  ).length;
 
   return (
-    <div className="terminal-card flex flex-col h-full overflow-hidden">
-      <div className="terminal-header flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Cpu className="w-4 h-4 text-[#a77df8]" />
-          <span className="font-mono text-xs font-bold text-white tracking-wider">
-            POLICY ENGINE // PROBABILISTIC REASONING
+    <section className="assessment-card terminal-card" aria-labelledby="assessment-title">
+      <header className="assessment-header">
+        <div>
+          <span className="assessment-eyebrow">
+            <Cpu aria-hidden="true" /> Decision support
           </span>
+          <h2 id="assessment-title">Assessment</h2>
         </div>
-        <div className="flex items-center gap-2 text-xs font-mono">
-          <span className="text-[11px] px-2 py-0.5 rounded bg-[#7b3fe4]/20 text-[#cbb2fe] border border-[#7b3fe4]/30">
-            CONFIDENCE: {(decision.confidence_score * 100).toFixed(0)}%
-          </span>
-          <button
-            onClick={onOpenExplainability}
-            className="text-[11px] text-[#94a3b8] hover:text-white flex items-center gap-1 transition-colors"
-            title="Inspect Structured Decision Evidence"
-          >
-            <HelpCircle className="w-3.5 h-3.5" />
-            <span>Why?</span>
-          </button>
-        </div>
-      </div>
-
-      <div className="p-3 space-y-3 flex-1 overflow-y-auto">
-        <div className="model-provenance">
-          <strong>
-            {(decision.origin || decision.source) === 'typesafe_jev'
-              ? `Jev · ${decision.model}`
-              : (decision.origin || decision.source) === 'simulated'
-                ? 'Heuristic replay policy'
-                : 'Safe fallback · no model inference'}
-          </strong>
+        <button type="button" className="button-secondary" onClick={onOpenExplainability}>
+          <HelpCircle aria-hidden="true" /> Inspect evidence
+        </button>
+      </header>
+      <div className="assessment-body">
+        <div className="assessment-provenance">
           <span>
-            {decision.latency_ms} ms measured · entropy {decision.entropy.toFixed(2)} · margin{' '}
-            {decision.top_two_margin.toFixed(2)}
+            {fallback
+              ? 'Safe fallback'
+              : heuristic
+                ? 'Heuristic replay'
+                : 'Jev · ' + (decision.model ?? 'model name unavailable')}
+            {decision.source === 'cached' ? ' · cached result' : ''}
           </span>
-          <span>Decision snapshot: {new Date(auditEvent.timestamp).toLocaleTimeString()}</span>
-          {decision.model_confidence !== undefined && (
-            <span>TypeSafe confidence: {(decision.model_confidence * 100).toFixed(0)}%</span>
+          <time dateTime={new Date(snapshot.evaluatedAt).toISOString()}>
+            {new Date(snapshot.evaluatedAt).toLocaleTimeString()}
+          </time>
+        </div>
+        <div className={'assessment-headline' + (fallback ? ' is-unavailable' : '')}>
+          <h3>{fallback ? 'AI assessment unavailable' : actionLabel(decision.selected_action)}</h3>
+          <p className="assessment-note">
+            {fallback
+              ? decision.error ||
+                'No model result is available for this observation. The safe fallback holds.'
+              : heuristic
+                ? 'This replay uses a deterministic heuristic policy. No model request was made.'
+                : 'Jev assessed the captured observation. Wallet execution requires a separate trade review.'}
+          </p>
+          {!fallback && decision.abstain_flag && (
+            <p className="assessment-note">
+              The application abstained because the assessment did not meet its uncertainty
+              threshold.
+            </p>
           )}
-          {decision.error && <span>{decision.error}</span>}
         </div>
-        <div className="bg-[#10131b] p-3 rounded border border-[#1a1f2c] space-y-2">
-          <div className="flex justify-between items-center text-[10px] uppercase font-mono text-[#64748b]">
-            <span>Action Probability Vector</span>
-            <span className="text-[#a77df8]">Selected: {decision.selected_action}</span>
-          </div>
-
-          <div className="space-y-1.5">
-            {(Object.entries(decision.action_probabilities) as [TradingAction, number][])
-              .sort(([, a], [, b]) => b - a)
-              .map(([action, prob]) => {
-                const pct = Math.round(prob * 100);
-                const isTop = action === decision.selected_action;
-                return (
-                  <div key={action} className="space-y-0.5">
-                    <div className="flex justify-between text-xs font-mono">
-                      <span className={isTop ? 'font-bold text-white' : 'text-[#94a3b8]'}>
-                        {actionLabels[action]}
-                      </span>
-                      <span className={isTop ? 'font-bold text-[#a77df8]' : 'text-[#64748b]'}>
-                        {pct}%
-                      </span>
-                    </div>
-                    <div className="w-full h-1.5 bg-[#171b26] rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all duration-300 ${
-                          isTop ? 'bg-gradient-to-r from-[#7b3fe4] to-[#a77df8]' : 'bg-[#2a3347]'
-                        }`}
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
+        {!fallback && (
+          <div className="assessment-distributions">
+            <h3>{heuristic ? 'Heuristic action weights' : 'Relative action probabilities'}</h3>
+            <p className="assessment-note">
+              {heuristic
+                ? 'Illustrative weights from the replay policy.'
+                : 'These values compare the available choices. They do not estimate profit or give permission to trade.'}
+            </p>
+            <Distribution
+              values={decision.action_probabilities}
+              selected={decision.selected_action}
+              actions
+            />
+            <details className="assessment-metadata">
+              <summary>
+                {heuristic ? 'Replay risk and regime weights' : 'Risk, regime and uncertainty'}
+              </summary>
+              <div className="assessment-distribution-grid">
+                <section>
+                  <h4>Risk</h4>
+                  <Distribution values={decision.risk_probabilities} />
+                </section>
+                <section>
+                  <h4>Market regime</h4>
+                  <Distribution values={decision.regime_probabilities} />
+                </section>
+              </div>
+              <dl className="assessment-facts">
+                <div>
+                  <dt>Application confidence score</dt>
+                  <dd>{(decision.confidence_score * 100).toFixed(1)}%</dd>
+                </div>
+                <div>
+                  <dt>Distribution entropy</dt>
+                  <dd>{decision.entropy.toFixed(3)}</dd>
+                </div>
+                <div>
+                  <dt>Top two choice margin</dt>
+                  <dd>{(decision.top_two_margin * 100).toFixed(1)} percentage points</dd>
+                </div>
+                <div>
+                  <dt>Measured response time</dt>
+                  <dd>{decision.latency_ms} ms</dd>
+                </div>
+                {provenance === 'jev' && decision.model_confidence !== undefined && (
+                  <div>
+                    <dt>TypeSafe confidence</dt>
+                    <dd>{(decision.model_confidence * 100).toFixed(1)}%</dd>
                   </div>
-                );
-              })}
+                )}
+              </dl>
+              <p className="assessment-note">
+                Confidence describes the concentration of the distribution. Policy checks remain
+                separate.
+              </p>
+            </details>
+          </div>
+        )}
+        <div className={'policy-verdict' + (riskCheck.allowed ? '' : ' is-blocked')}>
+          {riskCheck.allowed ? (
+            <CheckCircle2 aria-hidden="true" />
+          ) : (
+            <ShieldAlert aria-hidden="true" />
+          )}
+          <div>
+            <strong>
+              {riskCheck.allowed ? 'Local policy checks passed' : 'Proposal blocked by policy'}
+            </strong>
+            <p>{auditEvent.reason}</p>
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-          <div className="bg-[#10131b] p-2.5 rounded border border-[#1a1f2c] space-y-1.5">
-            <div className="text-[10px] uppercase text-[#64748b]">Risk Distribution</div>
-            {Object.entries(decision.risk_probabilities).map(([riskLevel, prob]) => {
-              const pct = Math.round(prob * 100);
-              const isHighOrCrit = riskLevel === 'high' || riskLevel === 'critical';
+        <details className="assessment-metadata">
+          <summary>
+            All policy checks{failedChecks ? ' · ' + failedChecks + ' blocked' : ''}
+          </summary>
+          <ul className="policy-check-list">
+            {Object.entries(riskCheck.checks).map(([name, check]) => {
+              const presentation = describePolicyCheck(name, check);
               return (
-                <div key={riskLevel} className="flex justify-between text-[11px]">
+                <li className="policy-check-item" key={name}>
                   <span
                     className={
-                      isHighOrCrit && pct > 40
-                        ? 'text-rose-400 font-semibold uppercase'
-                        : 'text-[#94a3b8] capitalize'
+                      'check-status' +
+                      (presentation.blocked
+                        ? ' is-blocked'
+                        : presentation.status === 'Not applicable'
+                          ? ' is-neutral'
+                          : '')
                     }
                   >
-                    {riskLevel}
+                    {presentation.status}
                   </span>
-                  <span
-                    className={
-                      isHighOrCrit && pct > 40 ? 'text-rose-400 font-bold' : 'text-[#64748b]'
-                    }
-                  >
-                    {pct}%
+                  <span>
+                    <strong>{name.replaceAll('_', ' ')}</strong>
+                    <span>{presentation.message}</span>
                   </span>
-                </div>
+                </li>
               );
             })}
-          </div>
-          <div className="bg-[#10131b] p-2.5 rounded border border-[#1a1f2c] space-y-1.5">
-            <div className="text-[10px] uppercase text-[#64748b]">Market Regime</div>
-            {Object.entries(decision.regime_probabilities).map(([regime, prob]) => {
-              const pct = Math.round(prob * 100);
-              const isLead = pct > 40;
-              return (
-                <div key={regime} className="flex justify-between text-[11px]">
-                  <span className={isLead ? 'text-amber-400 font-semibold' : 'text-[#94a3b8]'}>
-                    {regime.replace('_', ' ')}
-                  </span>
-                  <span className={isLead ? 'text-amber-400 font-bold' : 'text-[#64748b]'}>
-                    {pct}%
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-        <div
-          className={`p-3 rounded border text-xs font-mono space-y-2 ${
-            isExecutionBlocked
-              ? 'bg-rose-950/30 border-rose-600/50 text-rose-200'
-              : 'bg-emerald-950/20 border-emerald-600/40 text-emerald-200'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            {isExecutionBlocked ? (
-              <AlertOctagon className="w-4 h-4 text-rose-400 shrink-0" />
-            ) : (
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            {!Object.keys(riskCheck.checks).length && (
+              <li>Recorded policy checks are unavailable.</li>
             )}
-            <span className="font-bold tracking-wide">
-              {isExecutionBlocked
-                ? 'HARD RISK GATE: EXECUTION BLOCKED'
-                : 'LOCAL POLICY CHECKS: PASSED'}
-            </span>
-          </div>
-
-          <div className="text-[11px] leading-relaxed text-[#cbd5e1]">{auditEvent.reason}</div>
-          <div className="pt-2 border-t border-white/10 flex items-center justify-between text-[11px]">
-            <span>
-              {auditEvent.execution_mode === 'paper' ? 'Paper execution:' : 'Monad transaction:'}
-            </span>
-            {lastTxHash ? (
-              <a
-                href={`https://testnet.monadvision.com/tx/${lastTxHash}`}
-                target="_blank"
-                rel="noreferrer"
-                className="text-[#a77df8] hover:underline flex items-center gap-1 font-semibold"
-              >
-                <span>
-                  {lastTxHash.slice(0, 8)}...{lastTxHash.slice(-6)}
-                </span>
-                <ExternalLink className="w-3 h-3" />
-              </a>
-            ) : (
-              <span className="text-[#94a3b8]">
-                {auditEvent.execution_mode === 'paper'
-                  ? 'Simulated · no chain transaction'
-                  : 'No transaction submitted'}
-              </span>
-            )}
-          </div>
-        </div>
+          </ul>
+        </details>
+        <p className="assessment-note">
+          {snapshot.executionMode === 'paper'
+            ? 'Replay outcomes are paper activity. No chain transaction is submitted.'
+            : 'Observation only. The protective sale below is initiated by you.'}
+        </p>
       </div>
-    </div>
+    </section>
   );
 };

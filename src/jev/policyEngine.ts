@@ -5,9 +5,8 @@ import type {
   UserPolicy,
   RiskMetrics,
   JevDecisionState,
-  TradingAction,
+  JevStatePayload,
   StructuredDecisionFactors,
-  AuditEvent,
 } from '../types/index.ts';
 import { JevClient } from './client.ts';
 import { buildJevStatePayload, hashStatePayload } from './stateBuilder.ts';
@@ -30,12 +29,14 @@ export class JevPolicyEngine {
     policy: UserPolicy
   ): Promise<{
     decision: JevDecisionState;
+    assessmentInput: JevStatePayload;
     payloadHash: string;
     factors: StructuredDecisionFactors;
     reason: string;
   }> {
     const payload = buildJevStatePayload(market, position, orders, risk, policy);
     const payloadHash = hashStatePayload(payload);
+    const assessmentInput = structuredClone(payload);
 
     const decision = await this.jevClient.evaluate(payload);
 
@@ -80,6 +81,7 @@ export class JevPolicyEngine {
 
     return {
       decision,
+      assessmentInput,
       payloadHash,
       factors,
       reason,
