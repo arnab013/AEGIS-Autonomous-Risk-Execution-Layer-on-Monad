@@ -284,6 +284,146 @@ function mockKuru(simulatedOut = 4000000n) {
   });
   return { client: new KuruClient(kuruTestnetConfig, undefined, monad), monad, request };
 }
+describe('Kuru snapshot block availability', () => {
+  const missingBlock =
+    'Monad RPC: Block requested not found. Request might be querying historical state that is not available.';
+
+  it('discards the failed batch and recaptures every market read at one new block', async () => {
+    const { client, request } = mockKuru();
+    const original = request.getMockImplementation()!;
+    const secondTimestamp = Math.floor(Date.now() / 1000);
+    let heads = 0;
+    request.mockImplementation(async (method, params = []) => {
+      if (method === 'eth_blockNumber') return ++heads === 1 ? '0x64' : '0x65';
+      if (method === 'eth_getBlockByNumber')
+        return {
+          number: params[0],
+          timestamp: `0x${(secondTimestamp - (params[0] === '0x64' ? 10 : 0)).toString(16)}`,
+        };
+      if (method === 'eth_call') {
+        const { functionName } = decodeFunctionData({
+          abi: kuruOrderbookAbi,
+          data: (params[0] as { data: `0x${string}` }).data,
+        });
+        if (params[1] === '0x64' && functionName === 'getVaultParams')
+          throw new Error(missingBlock);
+        if (params[1] === '0x65' && functionName === 'getL2Book')
+          return encodeFunctionResult({
+            abi: kuruOrderbookAbi,
+            functionName: 'getL2Book',
+            result: packed([
+              101n,
+              2999000n,
+              20000000000000n,
+              0n,
+              3001000n,
+              20000000000000n,
+            ]) as `0x${string}`,
+          });
+      }
+      return original(method, params);
+    });
+
+    const snapshot = await client.fetchSnapshot();
+    expect(snapshot).toMatchObject({
+      blockNumber: 101,
+      timestamp: secondTimestamp * 1000,
+      midPrice: 0.03,
+      bids: [{ price: 0.02999, size: 2000 }],
+      asks: [{ price: 0.03001, size: 2000 }],
+    });
+    const batches = request.mock.calls
+      .filter(([method]) => ['eth_getCode', 'eth_call', 'eth_getBlockByNumber'].includes(method))
+      .map(([method, params = []]) => (method === 'eth_getBlockByNumber' ? params[0] : params[1]));
+    expect(batches).toEqual([...Array(5).fill('0x64'), ...Array(5).fill('0x65')]);
+    expect(heads).toBe(2);
+  });
+
+  it('stops after one recovery if the selected block remains unavailable', async () => {
+    const { client, request } = mockKuru();
+    const original = request.getMockImplementation()!;
+    request.mockImplementation(async (method, params = []) => {
+      if (method === 'eth_getCode') throw new Error(missingBlock);
+      return original(method, params);
+    });
+    await expect(client.fetchSnapshot()).rejects.toThrow(missingBlock);
+    expect(request.mock.calls.filter(([method]) => method === 'eth_blockNumber')).toHaveLength(2);
+    expect(request.mock.calls.filter(([method]) => method === 'eth_getCode')).toHaveLength(2);
+  });
+
+  it('does not retry an unrelated provider failure, even alongside a missing-block response', async () => {
+    const { client, request } = mockKuru();
+    const original = request.getMockImplementation()!;
+    request.mockImplementation(async (method, params = []) => {
+      if (method === 'eth_getCode') throw new Error(missingBlock);
+      if (method === 'eth_getBlockByNumber') throw new Error('Monad RPC HTTP 429');
+      return original(method, params);
+    });
+    await expect(client.fetchSnapshot()).rejects.toThrow('Monad RPC HTTP 429');
+    expect(request.mock.calls.filter(([method]) => method === 'eth_blockNumber')).toHaveLength(1);
+  });
+
+  it.each([
+    [null, 'Malformed Kuru snapshot block header'],
+    [{ number: '0x65', timestamp: '0x1' }, 'header differs from pinned RPC block'],
+    [{ number: '0x64', timestamp: 'invalid' }, 'Malformed Kuru snapshot block header'],
+  ])(
+    'rejects an unavailable or inconsistent header without recapturing: %s',
+    async (header, message) => {
+      const { client, request } = mockKuru();
+      const original = request.getMockImplementation()!;
+      request.mockImplementation(async (method, params = []) =>
+        method === 'eth_getBlockByNumber' ? header : original(method, params)
+      );
+      await expect(client.fetchSnapshot()).rejects.toThrow(String(message));
+      expect(request.mock.calls.filter(([method]) => method === 'eth_blockNumber')).toHaveLength(1);
+    }
+  );
+
+  it.each([
+    [packed([101n, 1999000n, 10000000000000n, 0n, 2001000n, 10000000000000n]), 'block differs'],
+    ['0x01', 'Malformed packed Kuru orderbook'],
+  ])('does not recover invalid or mismatched market evidence', async (book, message) => {
+    const { client, request } = mockKuru();
+    const original = request.getMockImplementation()!;
+    request.mockImplementation(async (method, params = []) => {
+      if (
+        method === 'eth_call' &&
+        decodeFunctionData({
+          abi: kuruOrderbookAbi,
+          data: (params[0] as { data: `0x${string}` }).data,
+        }).functionName === 'getL2Book'
+      )
+        return encodeFunctionResult({
+          abi: kuruOrderbookAbi,
+          functionName: 'getL2Book',
+          result: book as `0x${string}`,
+        });
+      return original(method, params);
+    });
+    await expect(client.fetchSnapshot()).rejects.toThrow(message);
+    expect(request.mock.calls.filter(([method]) => method === 'eth_blockNumber')).toHaveLength(1);
+  });
+
+  it('still blocks preparation when the recovered block timestamp is stale', async () => {
+    const { client, request } = mockKuru();
+    const original = request.getMockImplementation()!;
+    let codeReads = 0;
+    request.mockImplementation(async (method, params = []) => {
+      if (method === 'eth_getCode' && ++codeReads === 1) throw new Error(missingBlock);
+      if (method === 'eth_getBlockByNumber')
+        return {
+          number: '0x64',
+          timestamp: `0x${(Math.floor(Date.now() / 1000) - 31).toString(16)}`,
+        };
+      return original(method, params);
+    });
+    await expect(client.prepareMarketSell(ACCOUNT, '200')).rejects.toThrow('snapshot is stale');
+    expect(request.mock.calls.filter(([method]) => method === 'eth_blockNumber')).toHaveLength(2);
+    expect(request.mock.calls.some(([method]) => method === 'eth_estimateGas')).toBe(false);
+    expect(request.mock.calls.some(([method]) => method === 'eth_sendTransaction')).toBe(false);
+  });
+});
 describe('Real Kuru proposal behavior with deterministic RPC fixtures', () => {
   it('cancels signing when application authorization changes during Kuru preflight', async () => {
     const { client, monad, request } = mockKuru();

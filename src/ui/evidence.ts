@@ -6,6 +6,7 @@ import type {
   JevStatePayload,
   ManualTradeStatus,
   RiskCheckResult,
+  PositionState,
   TradingAction,
 } from '../types/index.ts';
 
@@ -15,6 +16,7 @@ export interface AssessmentSnapshot {
   observedAt: number;
   evaluatedAt: number;
   input: JevStatePayload;
+  holdings?: PositionState;
   decision: JevDecisionState;
   riskCheck: RiskCheckResult;
   auditEvent: AuditEvent;
@@ -32,6 +34,7 @@ export function createAssessmentSnapshot(
     observedAt: result.observedAt,
     evaluatedAt: Date.parse(result.auditEvent.timestamp),
     input: result.assessmentInput,
+    holdings: result.capturedPosition,
     decision: result.jevDecision,
     riskCheck: result.riskCheck,
     auditEvent: result.auditEvent,
@@ -46,6 +49,7 @@ export interface TradeLifecycle {
   hash?: string;
   detail?: string;
   receivedUsdc?: string;
+  recommendationId?: string;
 }
 
 export type EvidenceContext =
@@ -140,6 +144,7 @@ export function manualTradeAudit(
     execution_mode: 'wallet',
     decision_source: 'user',
     user_initiated: true,
+    recommendation_reference: transaction.recommendationId,
     manual_trade: {
       proposal_id: proposal.id,
       account: proposal.account,

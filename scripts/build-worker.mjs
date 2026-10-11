@@ -16,6 +16,8 @@ const types = {
   '.css': 'text/css',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
+  '.webp': 'image/webp',
+  '.woff2': 'font/woff2',
 };
 for (const file of readdirSync(directory, { recursive: true, withFileTypes: true })) {
   if (!file.isFile()) continue;
@@ -45,13 +47,14 @@ async function bundleWorker(fileName, files, legacy = false) {
   await build({
     stdin: {
       contents: `import worker from './cloudflare/worker.ts';
+${legacy ? '' : "export { AiBudgetLedger } from './cloudflare/ledger.ts';"}
 import { createEmbeddedAssets } from './cloudflare/embeddedAssets.ts';
 ${legacy ? "import { legacyNavigationRedirect } from './cloudflare/legacyRedirect.ts';" : ''}
 const ASSETS = createEmbeddedAssets(${JSON.stringify(files)});
 ${legacy ? `const contentTypes = ${JSON.stringify(contentTypes)};` : ''}
 export default { fetch(request, env = {}) {
   ${legacy ? 'const redirect = legacyNavigationRedirect(request, contentTypes); if (redirect) return redirect;' : ''}
-  return worker.fetch(request, { ...env, ASSETS });
+  return worker.fetch(request, { ...env, ${legacy ? "AI_ENABLED: 'false'," : ''} ASSETS });
 } };`,
       resolveDir: root,
       sourcefile: legacy ? 'cloudflare-legacy-entry.mjs' : 'cloudflare-entry.mjs',
@@ -65,8 +68,25 @@ export default { fetch(request, env = {}) {
   });
 }
 
-await bundleWorker('worker.mjs', assets);
+await bundleWorker('worker.mjs', legacyAssets);
 await bundleWorker('legacy-worker.mjs', legacyAssets, true);
+const previousModule = resolve(output, 'before-warm.mjs');
+if (existsSync(previousModule))
+  await build({
+    stdin: {
+      contents: `import previous from './.local/artifacts/cloudflare/before-warm.mjs';
+export { AiBudgetLedger } from './cloudflare/ledger.ts';
+export default { fetch(request, env) { return previous.fetch(request, { ...env, AI_ENABLED: 'false' }); } };`,
+      resolveDir: root,
+      sourcefile: 'cloudflare-rollback-entry.mjs',
+    },
+    outfile: resolve(output, 'rollback-worker.mjs'),
+    bundle: true,
+    format: 'esm',
+    platform: 'browser',
+    target: 'es2022',
+    minify: true,
+  });
 writeFileSync(resolve(output, 'manifest.json'), JSON.stringify({ manifest }, null, 2));
 console.log(
   `App and legacy Worker bundles prepared under .local/artifacts/cloudflare (${Object.keys(assets).length} current assets, ${Object.keys(legacyAssets).length} retained assets).`

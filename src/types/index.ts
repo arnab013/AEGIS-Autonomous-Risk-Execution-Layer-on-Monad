@@ -245,6 +245,7 @@ export interface AuditEvent {
   venue?: 'kuru' | 'perpl' | 'policy_guard';
   execution_mode?: 'paper' | 'observe' | 'wallet';
   decision_source?: string;
+  recommendation_reference?: string;
   transaction_status?: 'submitted' | 'confirmed' | 'reverted';
   chain_id?: number;
   user_initiated?: boolean;

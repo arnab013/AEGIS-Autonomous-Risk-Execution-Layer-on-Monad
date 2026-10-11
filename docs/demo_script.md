@@ -1,29 +1,29 @@
 # Demo script
 
-Record at most three minutes of actual operation, as required by the [competition rules](https://hackathon.monad.xyz/api/v1/policies/current). This is a recording plan: the signed sale and new gateway's live Jev response are still pending.
+Record at most three minutes of actual operation, as required by the [competition rules](https://hackathon.monad.xyz/api/v1/policies/current). Real Jev and Google-backed Scout responses have passed, including a confirmed session policy edit. Wallet-signed execution remains unverified.
 
 ## Before recording
 
 Start from the configured F: workspace. Check /api/status, chain, market, freshness and current size limits. Mainnet is the default; the documented testnet market lacked executable bids.
 
-Approve the specific trade/gas and API credits before enabling them. Choose an amount that fits contract precision/minimum, wallet inventory and user limits, leaving MON for gas. If the minimum order fails the mandate, resolve that mismatch before recording.
+The approved application AI allowance is US$10, split into US$2 implementation and US$8 public review. Check remaining budget and provider availability before recording. Every transaction needs the user's explicit wallet signing action. Choose an amount that fits contract precision/minimum, wallet inventory and user limits, leaving MON for gas. If the minimum order fails the mandate, resolve that mismatch before recording.
 
 ## Three minutes
 
-| Time      | Action                                                 | Point to explain                                                                 |
-| --------- | ------------------------------------------------------ | -------------------------------------------------------------------------------- |
-| 0:00–0:20 | Show the live Kuru market, chain, block/time and depth | The source is the onchain MON/USDC market.                                       |
-| 0:20–0:40 | Connect wallet and show balances/limits                | Code checks the mandate; historical orders/losses remain unavailable.            |
-| 0:40–1:05 | Request an approved Jev assessment                     | Explain the actual probabilities and uncertainty.                                |
-| 1:05–1:25 | Prepare a protective MON sale                          | Review amount, simulation, minimum USDC output, slippage, target and expiry.     |
-| 1:25–1:55 | Approve in wallet and show the result                  | Connect the hash to receipt, delivered USDC and refreshed balances.              |
-| 1:55–2:25 | Run replay scenario 5                                  | Directional confidence cannot override the position cap.                         |
-| 2:25–2:45 | Open decision evidence and journal                     | Show state hash, probability source and checks; the journal is local.            |
-| 2:45–3:00 | Explain scope                                          | One reviewed trading workflow works; complete history is needed before autonomy. |
+| Time      | Action                                                 | Point to explain                                                                   |
+| --------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| 0:00–0:20 | Show the live Kuru market, chain, block/time and depth | The source is the onchain MON/USDC market.                                         |
+| 0:20–0:40 | Connect wallet and show balances/limits                | Code checks the mandate; historical orders/losses remain unavailable.              |
+| 0:40–1:05 | Ask for an analysis in dashboard chat                  | Show actual Jev findings and Scout's separate recommendation; explain uncertainty. |
+| 1:05–1:25 | Prepare a protective MON sale                          | Review amount, simulation, minimum USDC output, slippage, target and expiry.       |
+| 1:25–1:55 | Approve in wallet and show the result                  | Connect the hash to receipt, delivered USDC and refreshed balances.                |
+| 1:55–2:25 | Run replay scenario 5                                  | Directional confidence cannot override the position cap.                           |
+| 2:25–2:45 | Open decision evidence and journal                     | Show captured inputs, source and checks; hosted records are session-only.          |
+| 2:45–3:00 | Explain scope                                          | One reviewed trading workflow works; complete history is needed before autonomy.   |
 
 Describe observed output rather than scripting a probability or action. If editing a receipt wait, show the same hash before/after. Submitted, pending, reverted and confirmed must remain distinct.
 
-If the Jev service is disabled, show fallback; heuristic replay does not prove live inference. If no sale is signed, describe the result as preparation/simulation and finish the real execution evidence before submission. Reject a wallet prompt that remains open after the proposal expires.
+If the Jev service is disabled, show fallback; heuristic replay does not prove live inference. If no sale is signed, describe the result as preparation/simulation and disclose that signed execution is unverified. Use the wallet segment to show the simulation terms, then Scout's policy confirmation. Claim a confirmed fill only after matching a successful receipt and delivered USDC. Reject a wallet prompt that remains open after the proposal expires.
 
 ## Replay examples
 

@@ -88,7 +88,7 @@ function fixture() {
 }
 
 describe('Cloudflare free application adapter', () => {
-  it('reports fixed mainnet, owner access and browser session journal without credentials', async () => {
+  it('reports provider configuration without enabling inference when the durable limit is absent', async () => {
     const { worker, env, client } = fixture();
     const credentials = {
       ...env,
@@ -101,8 +101,8 @@ describe('Cloudflare free application adapter', () => {
     expect(response.status).toBe(200);
     expect(JSON.parse(text)).toMatchObject({
       inferenceEnabled: false,
-      jevConfigured: false,
-      inferenceAccess: 'owner',
+      jevConfigured: true,
+      inferenceAccess: 'visitor_trial',
       journal: 'browser_session',
       execution: 'wallet_review',
       chainId: 143,
@@ -134,10 +134,10 @@ describe('Cloudflare free application adapter', () => {
         },
       }
     );
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(403);
     expect(await response.json()).toHaveProperty(
       'error',
-      expect.stringContaining('persistent spending limit')
+      expect.stringContaining('Origin is not allowed')
     );
     expect(upstream).not.toHaveBeenCalled();
   });

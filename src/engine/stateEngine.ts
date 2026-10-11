@@ -41,6 +41,7 @@ export interface PaperExecution {
 
 export interface EngineCycleOutput {
   assessmentInput: JevStatePayload;
+  capturedPosition?: PositionState;
   observedAt: number;
   market: MarketState;
   position: PositionState;
@@ -434,6 +435,7 @@ export class StateEngine {
       this.envioIndexer.recordAuditEvent(auditEvent);
       return {
         assessmentInput,
+        capturedPosition: structuredClone(position),
         observedAt: market.timestamp,
         market,
         position: structuredClone(this.position),

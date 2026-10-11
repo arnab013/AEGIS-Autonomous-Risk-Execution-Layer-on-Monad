@@ -2,6 +2,7 @@ import React from 'react';
 import { Shield, Pause, Play, Activity } from './icons.tsx';
 
 interface HeaderProps {
+  showBrand?: boolean;
   isPaused: boolean;
   onTogglePause: () => void;
   operationMode: 'replay' | 'live';
@@ -19,6 +20,7 @@ interface HeaderProps {
 }
 
 export function Header({
+  showBrand = true,
   isPaused,
   onTogglePause,
   operationMode,
@@ -39,15 +41,17 @@ export function Header({
   const fresh = live && age !== null && age <= 15 && rpcLatencyMs !== null;
   return (
     <header className="app-header">
-      <div className="brand">
-        <span className="brand-mark">
-          <Shield aria-hidden="true" />
-        </span>
-        <div>
-          <strong>Aegis</strong>
-          <span>Risk & execution control</span>
+      {showBrand && (
+        <div className="brand">
+          <span className="brand-mark">
+            <Shield aria-hidden="true" />
+          </span>
+          <div>
+            <strong>Aegis</strong>
+            <span>Risk & execution control</span>
+          </div>
         </div>
-      </div>
+      )}
       <div className="connection-context" aria-label="Market connection">
         <span className={'connection-dot ' + (fresh ? 'is-fresh' : '')} aria-hidden="true" />
         <div>

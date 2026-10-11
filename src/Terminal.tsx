@@ -23,6 +23,29 @@ import type { Eip1193Provider } from './execution/monadClient.ts';
 import { KuruClient, kuruTestnetConfig, kuruMainnetConfig } from './execution/kuruClient.ts';
 import type { KuruPreparedTrade, KuruMarketData } from './execution/kuruClient.ts';
 import type { AuditEvent, PositionState, RiskCheckResult, UserPolicy } from './types/index.ts';
+import { LandingPage } from './components/LandingPage.tsx';
+import { Dashboard } from './components/Dashboard.tsx';
+import { AgentChat } from './components/AgentChat.tsx';
+import { AiAccessDialog } from './components/AiAccessDialog.tsx';
+import { TrialAccess } from './components/TrialAccess.tsx';
+import { useAppRoute } from './ui/routes.ts';
+import { aiHeaders, checkScoutKey, inferenceApi } from './ui/aiAccess.ts';
+import { scoutProviders } from './ui/scoutProviders.ts';
+import type {
+  AiAccess,
+  AiStatus,
+  KeyCheckResult,
+  AgentReply,
+  AgentApprovalResponse,
+  AgentSessionContext,
+  ChatMessage,
+  PendingAgentIntent,
+  NewsContext,
+} from './ai/types.ts';
+import { buildJevStatePayload } from './jev/stateBuilder.ts';
+import { snapshotFromAgent } from './ui/agentEvidence.ts';
+import { AppSidebar } from './components/AppSidebar.tsx';
+import { usePageMotion } from './ui/motion.ts';
 
 interface ServiceStatus {
   inferenceEnabled: boolean;
@@ -32,7 +55,7 @@ interface ServiceStatus {
   rpcUrl: string;
   model: string;
   journal?: 'project' | 'browser_session';
-  inferenceAccess?: 'owner';
+  inferenceAccess?: 'owner' | 'visitor_trial';
 }
 const emptyPosition = (): PositionState => ({
   spot_exposure_usd: 0,
@@ -65,7 +88,35 @@ async function api<T>(route: string, value?: unknown): Promise<T> {
 }
 
 export const Terminal: React.FC = () => {
-  const [mode, setMode] = useState<'replay' | 'live'>('replay');
+  const { route, navigate } = useAppRoute();
+  usePageMotion(route);
+  const [mode, setMode] = useState<'replay' | 'live'>('live');
+  const [chartHistory, setChartHistory] = useState<{ time: number; price: number }[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [agentPending, setAgentPending] = useState(false);
+  const [agentError, setAgentError] = useState('');
+  const [agentIntent, setAgentIntent] = useState<PendingAgentIntent | null>(null);
+  const [intentStates, setIntentStates] = useState<
+    Record<string, 'pending' | 'approved' | 'rejected'>
+  >({});
+  const consumedIntents = useRef(new Set<string>());
+  const [aiAccess, setAiAccess] = useState<AiAccess>({
+    jevFunding: 'sponsored',
+    agentFunding: 'sponsored',
+    agentProvider: 'mistral',
+    jevKey: '',
+    agentKey: '',
+  });
+  const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
+  const [accessOpen, setAccessOpen] = useState(false);
+  const [accessError, setAccessError] = useState('');
+  const [agentKeyCheck, setAgentKeyCheck] = useState<KeyCheckResult | null>(null);
+  const [agentKeyChecking, setAgentKeyChecking] = useState(false);
+  const agentKeyCheckVersion = useRef(0);
+  const agentKeyCheckRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => agentKeyCheckRequest.current?.abort(), []);
+  const [news, setNews] = useState<NewsContext | null>(null);
+  const [newsError, setNewsError] = useState('');
   const modeRef = useRef(mode);
   modeRef.current = mode;
   const [scenarioId, setScenarioId] = useState(REPLAY_SCENARIOS[0].id);
@@ -81,7 +132,6 @@ export const Terminal: React.FC = () => {
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [status, setStatus] = useState<ServiceStatus | null>(null);
   const statusPromise = useRef<Promise<ServiceStatus> | null>(null);
-  const [ownerAccess, setOwnerAccess] = useState('');
   const [notice, setNotice] = useState('');
   const [marketError, setMarketError] = useState('');
   const [wallet, setWallet] = useState<string | null>(null);
@@ -138,6 +188,42 @@ export const Terminal: React.FC = () => {
     if (current.status === 'prepared' || current.status === 'awaiting_wallet')
       updateTrade({ ...current, status: 'stopped', detail: reason });
   }
+  function go(next: '/' | '/app' | '/app/workspace') {
+    setPlaying(false);
+    setEvidence(null);
+    navigate(next);
+  }
+  function openReplay() {
+    if (modeRef.current !== 'replay') {
+      authorizationVersion.current++;
+      modeRef.current = 'replay';
+      setMode('replay');
+      setScenarioId('scenario_5_risk_gate_blocks');
+      invalidateProposal('Replay mode selected. No wallet trade can run in replay.');
+    }
+    go('/app/workspace');
+  }
+  function sessionContext(): AgentSessionContext {
+    return {
+      mode: modeRef.current,
+      ...(walletRef.current ? { account: walletRef.current } : {}),
+      chainId: status?.chainId ?? 143,
+      policy: structuredClone(policyRef.current),
+      policyRevision: authorizationVersion.current,
+      clipUsd: clip,
+      ...(modeRef.current === 'replay' ? { scenarioId } : {}),
+    };
+  }
+  async function refreshAiStatus() {
+    const next = await inferenceApi<AiStatus>('/api/inference/status');
+    setAiStatus(next);
+    return next;
+  }
+  function openAccess() {
+    setAccessError('');
+    setAccessOpen(true);
+    void refreshAiStatus().catch((error: Error) => setAccessError(error.message));
+  }
   function editPolicyInput(key: PolicyInputKey, raw: string) {
     const nextInputs = { ...policyInputs, [key]: raw };
     const errors: Partial<Record<PolicyInputKey, string>> = {};
@@ -168,6 +254,33 @@ export const Terminal: React.FC = () => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    setPlaying(false);
+    setEvidence(null);
+    requestAnimationFrame(() => {
+      const heading = document.querySelector<HTMLElement>('h1');
+      if (heading) {
+        heading.tabIndex = -1;
+        heading.focus({ preventScroll: true });
+      }
+    });
+  }, [route]);
+  useEffect(() => {
+    const heading = document.querySelector<HTMLElement>('h1');
+    if (heading) heading.tabIndex = -1;
+    void refreshAiStatus().catch(() => {});
+    void inferenceApi<NewsContext>('/api/news')
+      .then(setNews)
+      .catch((error: Error) => setNewsError(error.message));
+  }, []);
+  useEffect(() => {
+    if (!state) return;
+    setChartHistory((previous) => {
+      const point = { time: state.market.timestamp, price: state.market.mid_price };
+      return previous.at(-1)?.time === point.time ? previous : [...previous, point].slice(-60);
+    });
+  }, [state?.market.timestamp]);
 
   const record = useCallback((event: AuditEvent) => {
     setEvents((previous) => [event, ...previous].slice(0, 200));
@@ -200,6 +313,7 @@ export const Terminal: React.FC = () => {
     setAssessment(null);
     setEvidence(null);
     setState(null);
+    setChartHistory([]);
     stateRef.current = null;
     setNotice('');
     setMarketError('');
@@ -322,7 +436,7 @@ export const Terminal: React.FC = () => {
   }, [mode, wallet]);
 
   useEffect(() => {
-    if (mode !== 'live') return;
+    if (mode !== 'live' || route === '/') return;
     let cancelled = false,
       running = false;
     const poll = async () => {
@@ -342,7 +456,7 @@ export const Terminal: React.FC = () => {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [refreshMarket, status?.journal]);
+  }, [refreshMarket, status?.journal, route]);
 
   const evaluate = useCallback(
     async (advance = false, useJev = true) => {
@@ -385,11 +499,10 @@ export const Terminal: React.FC = () => {
               mode: 'live',
               proxyUrl: '/api/jev',
               enableCache: false,
-              timeoutMs: 9000,
+              timeoutMs: 30000,
               fetcher: (url, options) => {
                 const headers = new Headers(options?.headers);
-                if (status?.inferenceAccess === 'owner')
-                  headers.set('Authorization', `Bearer ${ownerAccess}`);
+                aiHeaders(aiAccess).forEach((value, key) => headers.set(key, value));
                 return fetch(url, { ...options, headers });
               },
             })
@@ -412,17 +525,7 @@ export const Terminal: React.FC = () => {
         setBusy(false);
       }
     },
-    [
-      mode,
-      tickIndex,
-      scenario,
-      policy,
-      clip,
-      refreshMarket,
-      record,
-      ownerAccess,
-      status?.inferenceAccess,
-    ]
+    [mode, tickIndex, scenario, policy, clip, refreshMarket, record, aiAccess]
   );
 
   useEffect(() => {
@@ -525,7 +628,7 @@ export const Terminal: React.FC = () => {
     if (!result.allowed) throw new Error(result.violations.join('; '));
     return result;
   }
-  async function prepareReduction() {
+  async function prepareReduction(requestedAmount?: string, recommendationId?: string) {
     if (!wallet || mode !== 'live' || pending.current || !validInputs.current) return;
     if (
       tradeStateRef.current.hash &&
@@ -553,9 +656,19 @@ export const Terminal: React.FC = () => {
       )
         throw new Error('Wallet, market mode or mandate changed. Prepare again.');
       const scale = 10 ** sizeDecimals.current;
-      const amountMon = (Math.floor((clip / current.market.mid_price) * scale) / scale).toFixed(
-        sizeDecimals.current
-      );
+      const amountMon =
+        requestedAmount ??
+        (Math.floor((clip / current.market.mid_price) * scale) / scale).toFixed(
+          sizeDecimals.current
+        );
+      if (
+        !/^\d+(?:\.\d+)?$/.test(amountMon) ||
+        Number(amountMon) <= 0 ||
+        (amountMon.split('.')[1]?.length ?? 0) > sizeDecimals.current
+      )
+        throw new Error(
+          'The requested MON amount does not match the market size precision. Request a fresh recommendation.'
+        );
       reductionGate(current, Number(amountMon));
       const proposal = await api<KuruPreparedTrade>('/api/prepare', {
         account: wallet,
@@ -582,6 +695,7 @@ export const Terminal: React.FC = () => {
         status: 'prepared',
         proposal,
         detail: 'Simulation passed. Review the exact terms before opening your wallet.',
+        recommendationId,
       };
       tradeChecksRef.current = checks;
       tradeCheckedAtRef.current = checkedAt;
@@ -612,7 +726,11 @@ export const Terminal: React.FC = () => {
       policyVersion = authorizationVersion.current;
     const proposal = prepared;
     const current = engine.current;
-    let submittedState: TradeLifecycle = { status: 'awaiting_wallet', proposal };
+    let submittedState: TradeLifecycle = {
+      status: 'awaiting_wallet',
+      proposal,
+      recommendationId: tradeStateRef.current.recommendationId,
+    };
     let latestChecks = tradeChecksRef.current;
     setBusy(true);
     try {
@@ -671,6 +789,7 @@ export const Terminal: React.FC = () => {
         status: 'submitted',
         proposal,
         hash,
+        recommendationId: submittedState.recommendationId,
         detail: 'Submitted to Monad. Waiting for the matching receipt.',
       };
       updateTrade(submittedState);
@@ -820,282 +939,669 @@ export const Terminal: React.FC = () => {
         transaction: structuredClone(tradeState),
       });
   }
-  return (
-    <div className="aegis-app">
-      <Header
-        isPaused={policy.is_paused}
-        onTogglePause={() => {
-          const next = { ...policyRef.current, is_paused: !policyRef.current.is_paused };
+  function clearAgentKeyCheck() {
+    agentKeyCheckVersion.current++;
+    agentKeyCheckRequest.current?.abort();
+    agentKeyCheckRequest.current = null;
+    setAgentKeyCheck(null);
+    setAgentKeyChecking(false);
+    setAccessError('');
+    setAgentError('');
+  }
+  async function verifyAgentKey() {
+    if (aiAccess.agentFunding !== 'byok' || !aiAccess.agentKey.trim() || agentKeyChecking) return;
+    const version = ++agentKeyCheckVersion.current;
+    const controller = new AbortController();
+    agentKeyCheckRequest.current = controller;
+    setAgentKeyCheck(null);
+    setAgentKeyChecking(true);
+    setAccessError('');
+    try {
+      const checked = await checkScoutKey(
+        aiAccess.agentProvider,
+        aiAccess.agentKey,
+        controller.signal
+      );
+      if (version === agentKeyCheckVersion.current) setAgentKeyCheck(checked);
+    } catch (error) {
+      if (version === agentKeyCheckVersion.current && !controller.signal.aborted)
+        setAccessError((error as Error).message);
+    } finally {
+      if (version === agentKeyCheckVersion.current) {
+        agentKeyCheckRequest.current = null;
+        setAgentKeyChecking(false);
+      }
+    }
+  }
+  async function requestAgent(message: string) {
+    if (pending.current || agentPending) return;
+    if (!validInputs.current) {
+      setAgentError('Correct the highlighted policy fields before requesting an analysis.');
+      return;
+    }
+    if (aiAccess.agentFunding === 'disabled') {
+      setAgentError('Scout is disabled. Choose access to use chat.');
+      openAccess();
+      return;
+    }
+    if (!aiStatus?.sessionActive) {
+      setAccessError('Verify visitor access before starting the trial.');
+      setAccessOpen(true);
+      return;
+    }
+    if (
+      (aiAccess.agentFunding === 'byok' && !aiAccess.agentKey.trim()) ||
+      (aiAccess.jevFunding === 'byok' && !aiAccess.jevKey.trim())
+    ) {
+      setAccessError('Add the key for each provider set to use your API key.');
+      setAccessOpen(true);
+      return;
+    }
+    const context = sessionContext();
+    const token = generation.current;
+    const version = authorizationVersion.current;
+    setMessages((previous) => [
+      ...previous,
+      { id: crypto.randomUUID(), role: 'user', text: message, timestamp: Date.now() },
+    ]);
+    setAgentIntent(null);
+    setAgentError('');
+    setAgentPending(true);
+    setBusy(true);
+    pending.current = true;
+    setPlaying(false);
+    try {
+      const reply = await inferenceApi<AgentReply>(
+        '/api/agent',
+        {
+          message,
+          history: messages.slice(-10).map(({ role, text }) => ({ role, text })),
+          context,
+          ...(mode === 'replay' && state
+            ? {
+                replayInput: buildJevStatePayload(
+                  state.market,
+                  state.position,
+                  state.orders,
+                  state.risk,
+                  policyRef.current
+                ),
+              }
+            : {}),
+        },
+        aiAccess
+      );
+      setMessages((previous) => [
+        ...previous,
+        { id: reply.id, role: 'assistant', text: reply.message, timestamp: Date.now(), reply },
+      ]);
+      if (token !== generation.current || version !== authorizationVersion.current) {
+        setAgentError(
+          'The wallet or policy changed during analysis. Its recommendation cannot be approved; request a fresh analysis.'
+        );
+        return;
+      }
+      setAgentIntent(reply.pendingIntent ?? null);
+      const captured = snapshotFromAgent(reply, context.clipUsd);
+      if (captured && context.mode === 'live') {
+        setAssessment(captured);
+        record(captured.auditEvent);
+      }
+      if (reply.pendingIntent)
+        setIntentStates((previous) => ({ ...previous, [reply.pendingIntent!.id]: 'pending' }));
+    } catch (error) {
+      setAgentError((error as Error).message);
+    } finally {
+      pending.current = false;
+      setAgentPending(false);
+      setBusy(false);
+      void refreshAiStatus().catch(() => {});
+      void inferenceApi<NewsContext>('/api/news')
+        .then(setNews)
+        .catch(() => {});
+    }
+  }
+  async function approveIntent(intent: PendingAgentIntent) {
+    if (pending.current || consumedIntents.current.has(intent.id)) return;
+    if (!validInputs.current) {
+      setAgentError('Correct the highlighted policy fields before confirming.');
+      return;
+    }
+    if (Date.now() >= intent.expiresAt) {
+      setAgentError('This recommendation expired. Request a fresh analysis.');
+      return;
+    }
+    consumedIntents.current.add(intent.id);
+    pending.current = true;
+    setBusy(true);
+    setAgentError('');
+    const version = authorizationVersion.current;
+    try {
+      const approval = await inferenceApi<AgentApprovalResponse>(
+        '/api/agent/approve',
+        { token: intent.token, context: sessionContext() },
+        aiAccess
+      );
+      if (version !== authorizationVersion.current || !validInputs.current)
+        throw new Error(
+          'The policy or wallet changed while confirming. Request a fresh recommendation.'
+        );
+      setIntentStates((previous) => ({ ...previous, [intent.id]: 'approved' }));
+      if (approval.intent.kind === 'set_policy') {
+        if (!approval.policyAfter)
+          throw new Error('The server did not return the validated policy.');
+        authorizationVersion.current++;
+        policyRef.current = approval.policyAfter;
+        setPolicy(approval.policyAfter);
+        setPolicyInputs(
+          (previous) =>
+            Object.fromEntries(
+              Object.entries(previous).map(([key, value]) => [
+                key,
+                key === 'trade_size'
+                  ? value
+                  : String(approval.policyAfter![key as keyof UserPolicy]),
+              ])
+            ) as Record<PolicyInputKey, string>
+        );
+        invalidateProposal(
+          'A confirmed agent policy change was applied. Prepare a fresh proposal.'
+        );
+        setNotice('Confirmed policy edit applied to this session.');
+      } else if (approval.intent.kind === 'prepare_mon_reduction') {
+        pending.current = false;
+        await prepareReduction(approval.intent.amountMon, approval.intentId);
+        go('/app/workspace');
+      } else if (approval.intent.kind === 'replay_control') {
+        pending.current = false;
+        if (approval.intent.action === 'step') await evaluate(true, false);
+        else if (approval.intent.action === 'play') setPlaying(true);
+        else if (approval.intent.action === 'pause') setPlaying(false);
+        else {
           authorizationVersion.current++;
-          policyRef.current = next;
-          setPolicy(next);
-          invalidateProposal('Trading pause changed. Prepare a fresh proposal.');
-          setPlaying(false);
+          setResetVersion((previous) => previous + 1);
+        }
+      }
+    } catch (error) {
+      setIntentStates((previous) => ({ ...previous, [intent.id]: 'rejected' }));
+      setAgentError((error as Error).message);
+    } finally {
+      pending.current = false;
+      setBusy(false);
+    }
+  }
+  const accessDialog = (
+    <AiAccessDialog
+      open={accessOpen}
+      jevFunding={aiAccess.jevFunding}
+      agentFunding={aiAccess.agentFunding}
+      agentProvider={aiAccess.agentProvider}
+      onJevFundingChange={(jevFunding) =>
+        setAiAccess((previous) => ({
+          ...previous,
+          jevFunding,
+          jevKey: jevFunding === 'byok' ? previous.jevKey : '',
+        }))
+      }
+      onAgentFundingChange={(agentFunding) => {
+        clearAgentKeyCheck();
+        setAiAccess((previous) => ({
+          ...previous,
+          agentFunding,
+          agentKey: agentFunding === 'byok' ? previous.agentKey : '',
+        }));
+      }}
+      onAgentProviderChange={(agentProvider) => {
+        clearAgentKeyCheck();
+        setAiAccess((previous) => ({ ...previous, agentProvider, agentKey: '' }));
+      }}
+      jevKey={aiAccess.jevKey}
+      agentKey={aiAccess.agentKey}
+      onJevKeyChange={(jevKey) => setAiAccess((previous) => ({ ...previous, jevKey }))}
+      onAgentKeyChange={(agentKey) => {
+        clearAgentKeyCheck();
+        setAiAccess((previous) => ({ ...previous, agentKey }));
+      }}
+      onCheckAgentKey={() => void verifyAgentKey()}
+      agentKeyCheck={agentKeyCheck}
+      agentKeyChecking={agentKeyChecking}
+      onApply={() => {
+        setAccessOpen(false);
+        setAccessError('');
+      }}
+      onClose={() => setAccessOpen(false)}
+      jevSponsoredAvailable={Boolean(aiStatus?.enabled && aiStatus.jevConfigured)}
+      agentSponsoredAvailable={Boolean(aiStatus?.enabled && aiStatus.agentConfigured)}
+      trialProvider={aiStatus?.agentProvider}
+      trialModel={aiStatus?.model}
+      busy={busy}
+      error={accessError}
+    >
+      <TrialAccess
+        siteKey={aiStatus?.turnstileSiteKey}
+        active={Boolean(aiStatus?.sessionActive)}
+        onVerified={async (turnstileToken) => {
+          await inferenceApi('/api/inference/session', { turnstileToken });
+          await refreshAiStatus();
+          setAccessError('');
         }}
-        operationMode={mode}
-        onToggleMode={(nextMode) => {
-          if (nextMode === modeRef.current) return;
-          authorizationVersion.current++;
-          modeRef.current = nextMode;
-          invalidateProposal('The workspace changed. Prepare a fresh proposal.');
-          setMode(nextMode);
-        }}
-        rpcLatencyMs={latency}
-        blockNumber={block}
-        chainId={status?.chainId}
-        marketTimestamp={state?.market.timestamp}
-        now={now}
-        walletAddress={wallet}
-        walletBalanceMon={balance}
-        isConnectingWallet={connecting}
-        onConnectWallet={() => void connect()}
-        onDisconnectWallet={disconnect}
       />
-      <main className="app-main">
-        <section className="workspace-intro" aria-labelledby="workspace-title">
-          <div>
-            <span className={'context-badge ' + (mode === 'replay' ? 'is-simulation' : 'is-live')}>
-              {mode === 'replay' ? 'Synthetic replay' : 'Live market'}
-            </span>
-            <h1 id="workspace-title">
-              {mode === 'replay' ? 'See the safeguards work.' : 'Your risk. Your rules.'}
-            </h1>
-            <p>
-              {mode === 'replay'
-                ? 'Explore a recommendation, inspect its constraints, and follow the paper outcome.'
-                : 'Inspect real market data and review an exact MON sale before you sign.'}
-            </p>
-          </div>
-          <div className="workspace-context">
-            <strong>MON / USDC</strong>
-            <span>
-              {mode === 'replay'
-                ? 'Heuristic assessment · paper execution'
-                : 'Kuru · Monad ' + (status?.chainId ?? 'loading')}
-            </span>
-            <span className="source-pill">
-              {source === 'typesafe_jev'
-                ? 'Jev assessment'
-                : source === 'simulated'
-                  ? 'Heuristic replay assessment'
-                  : 'AI assessment unavailable'}
-            </span>
-          </div>
-        </section>
-        {notice && (
-          <div className="notice" role="status">
-            {notice}
-          </div>
-        )}
-        {marketError && (
-          <div className="notice" role="status">
-            {marketError}
-          </div>
-        )}
-        {mode === 'replay' && (
-          <ReplayControlBar
-            currentScenarioId={scenarioId}
-            onSelectScenario={(id) => {
-              authorizationVersion.current++;
-              invalidateProposal('The replay scenario changed. Prepare a fresh proposal.');
-              setScenarioId(id);
-            }}
-            isPlaying={playing}
-            onTogglePlay={() => inputsAreValid && setPlaying((previous) => !previous)}
-            onStepTick={() => void evaluate(true)}
-            onResetScenario={() => {
-              authorizationVersion.current++;
-              invalidateProposal('Replay reset. Prepare a fresh proposal.');
-              setResetVersion((previous) => previous + 1);
-            }}
-            currentTickIndex={tickIndex}
-            totalTicks={scenario.ticks.length}
-          />
-        )}
-        <div className={'workspace-grid ' + mode}>
-          <div className="assessment-slot">
-            {assessment ? (
-              <JevPolicyPanel snapshot={assessment} onOpenExplainability={openAssessmentEvidence} />
-            ) : (
-              <section className="terminal-card empty-state">
-                <h2>Assessment</h2>
-                <p>{mode === 'live' ? 'Reading the Kuru market…' : 'Preparing replay…'}</p>
-              </section>
-            )}
-            {mode === 'live' && (
-              <section className="live-controls terminal-card" aria-label="Assessment controls">
-                <p>
-                  {status?.inferenceEnabled
-                    ? 'Each Jev evaluation uses API credits.'
-                    : 'AI assessments are disabled. Market reads and trade simulation remain available.'}
-                </p>
-                {status?.inferenceAccess === 'owner' && status.inferenceEnabled && (
-                  <label>
-                    Owner access
-                    <input
-                      type="password"
-                      autoComplete="off"
-                      value={ownerAccess}
-                      onChange={(event) => setOwnerAccess(event.target.value)}
-                    />
-                  </label>
-                )}
-                <div className="control-actions">
-                  <button
-                    className="primary-button"
-                    disabled={
-                      busy ||
-                      !inputsAreValid ||
-                      !status?.inferenceEnabled ||
-                      (status.inferenceAccess === 'owner' && !ownerAccess)
-                    }
-                    onClick={() => void evaluate()}
-                  >
-                    Evaluate with Jev
-                  </button>
-                  <button
-                    disabled={busy || !inputsAreValid}
-                    onClick={() => void evaluate(false, false)}
-                  >
-                    Inspect safety state
-                  </button>
-                </div>
-              </section>
-            )}
-          </div>
-          {assessment && (
-            <div className="decision-slot">
-              <DecisionFlow snapshot={assessment} onOpenEvidence={openAssessmentEvidence} />
-            </div>
-          )}
-          {mode === 'live' && (
-            <div className="trade-slot">
-              <TradeReview
-                transaction={tradeState}
-                prepared={prepared}
-                now={now}
-                chainId={status?.chainId}
-                minimumMon={minimumMon}
-                tradeSizeUsd={clip}
-                busy={busy}
-                hasWallet={Boolean(wallet)}
-                canPrepare={Boolean(wallet && status && !policy.is_paused && inputsAreValid)}
-                canSubmit={Boolean(
-                  wallet &&
-                    status &&
-                    !policy.is_paused &&
-                    inputsAreValid &&
-                    prepared &&
-                    prepared.id === tradeState.proposal?.id
-                )}
-                onPrepare={() => void prepareReduction()}
-                onSubmit={() => void submitReduction()}
-                onInspect={openTradeEvidence}
-                onCheckConfirmation={() => void checkConfirmation()}
-              />
-            </div>
-          )}
-          {state && (
-            <div className="market-slot">
-              <MarketPanel
-                key={mode + '-' + scenarioId + '-' + resetVersion}
-                market={state.market}
-                live={mode === 'live'}
-              />
-            </div>
-          )}
-          {state && (
-            <div className="portfolio-slot">
-              <PortfolioPanel
-                hasWallet={Boolean(wallet)}
-                position={state.position}
-                orders={state.orders}
-                policy={policy}
-                risk={state.risk}
-                live={mode === 'live'}
-              />
-            </div>
-          )}
-        </div>
-        <section className="mandate terminal-card" id="mandate" aria-labelledby="mandate-title">
-          <div className="panel-heading">
-            <div>
-              <h2 id="mandate-title">Your mandate</h2>
-              <p>Hard limits apply independently of the assessment.</p>
-            </div>
-            <span className={'context-badge ' + (policy.is_paused ? 'is-blocked' : '')}>
-              {policy.is_paused ? 'Paused' : 'Session policy'}
-            </span>
-          </div>
-          <div className="policy-primary">
-            {(['trade_size', 'max_position_usd', 'max_slippage_bps'] as PolicyInputKey[]).map(
-              policyField
-            )}
-          </div>
-          <details className="advanced-policy">
-            <summary>Advanced limits</summary>
-            <div className="policy-fields">
-              {(
-                [
-                  'max_order_size',
-                  'max_daily_loss',
-                  'max_leverage',
-                  'min_liquidity_depth_usd',
-                ] as PolicyInputKey[]
-              ).map(policyField)}
-            </div>
-          </details>
-          <p className="muted-note">
-            Valid edits apply immediately in this session and invalidate any prepared proposal.
-            Limits reset when you reload.
-          </p>
-          {mode === 'live' && (
-            <p className="coverage-note">
-              Wallet MON and USDC are available after connection. External positions, resting
-              orders, historical loss, drawdown and trade flow are not indexed. Unattended trading
-              is unavailable.
-            </p>
-          )}
-        </section>
-        <AuditTrailPanel
+      {aiStatus?.poolRemainingMicros !== undefined && (
+        <p>
+          Shared review allowance remaining: $
+          {(aiStatus.poolRemainingMicros / 1_000_000).toFixed(2)}.{' '}
+          {aiStatus.visitorTurnsRemaining ?? 5} visitor turns remain today.
+        </p>
+      )}
+    </AiAccessDialog>
+  );
+  if (route === '/')
+    return (
+      <>
+        <LandingPage
+          onOpenDashboard={() => go('/app')}
+          onReplay={openReplay}
+          previewSrc="/dashboard-preview.png"
+          previewAlt="Actual Aegis dashboard with a Kuru market observation; wallet disconnected and no AI request or trade made."
+        />
+        {accessDialog}
+      </>
+    );
+  if (route === '/app')
+    return (
+      <>
+        <Dashboard
+          mode={mode}
+          market={state?.market}
+          position={state?.position}
+          walletAddress={wallet}
+          chainId={status?.chainId}
+          now={now}
+          assessment={assessment}
+          policy={policy}
+          trade={tradeState}
           events={events}
-          exportLabel={
-            status?.journal === 'browser_session' ? 'Copy session JSON' : 'Save JSON to project'
+          onHome={() => go('/')}
+          onOpenWorkspace={() => go('/app/workspace')}
+          onReplay={openReplay}
+          onOpenAiAccess={openAccess}
+          onInspectAssessment={openAssessmentEvidence}
+          headerActions={
+            <button
+              className="warm-button warm-button-outline"
+              disabled={busy || connecting}
+              onClick={() => (wallet ? disconnect() : void connect())}
+            >
+              {wallet
+                ? wallet.slice(0, 6) + '…' + wallet.slice(-4) + ' · Disconnect'
+                : connecting
+                  ? 'Connecting…'
+                  : 'Connect wallet'}
+            </button>
           }
-          onExport={() =>
-            status?.journal === 'browser_session'
-              ? void navigator.clipboard
-                  .writeText(JSON.stringify(events, null, 2))
-                  .then(() =>
-                    setNotice(
-                      'Session journal copied. Copy it before reloading; hosted history is session only.'
-                    )
-                  )
-                  .catch(() =>
-                    setNotice(
-                      'Clipboard access was blocked. Keep this session open to review its journal.'
-                    )
-                  )
-              : void api<{ savedPath: string }>('/api/audit/export', events)
-                  .then((result) => setNotice('Audit saved to ' + result.savedPath))
-                  .catch((error) => setNotice(error.message))
+          chat={
+            <AgentChat
+              messages={messages}
+              pending={agentPending}
+              intent={agentIntent}
+              intentState={intentStates}
+              now={now}
+              busy={busy}
+              error={agentError}
+              onSend={(message) => void requestAgent(message)}
+              onApprove={(intent) => void approveIntent(intent)}
+              onReject={(intent) => {
+                consumedIntents.current.add(intent.id);
+                setIntentStates((previous) => ({ ...previous, [intent.id]: 'rejected' }));
+              }}
+              accessLabel={
+                aiAccess.agentFunding === 'byok'
+                  ? 'Your ' + scoutProviders[aiAccess.agentProvider].label + ' key'
+                  : aiAccess.agentFunding === 'disabled'
+                    ? 'Scout disabled'
+                    : 'Project-funded trial'
+              }
+              onOpenAccess={openAccess}
+            />
+          }
+          sideContent={
+            <>
+              {(notice || marketError) && (
+                <p className="notice" role="status">
+                  {notice || marketError}
+                </p>
+              )}
+              <section className="warm-card dashboard-news">
+                <span className="warm-eyebrow">Dated context</span>
+                <h2>News in view.</h2>
+                {news ? (
+                  <>
+                    <p>
+                      Retrieved {new Date(news.fetchedAt).toLocaleString()}. Coverage from the
+                      preceding 72 hours.
+                    </p>
+                    {news.articles.slice(0, 4).map((article) => (
+                      <article key={article.id}>
+                        <a href={article.url} target="_blank" rel="noreferrer">
+                          {article.title}
+                        </a>
+                        <p>
+                          {article.source} ·{' '}
+                          <time dateTime={new Date(article.publishedAt).toISOString()}>
+                            {new Date(article.publishedAt).toLocaleString()}
+                          </time>
+                        </p>
+                      </article>
+                    ))}
+                    {!news.articles.length && <p>No relevant recent coverage was found.</p>}
+                    {news.unavailableSources.length > 0 && (
+                      <p>
+                        Unavailable:{' '}
+                        {news.unavailableSources
+                          .map((name) =>
+                            news.unavailableDetails?.[name]
+                              ? `${name} (${news.unavailableDetails[name]})`
+                              : name
+                          )
+                          .join('; ')}
+                        .
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p>{newsError || 'Fetching source feeds…'}</p>
+                )}
+              </section>
+            </>
           }
         />
-        {status?.journal === 'browser_session' && (
-          <p className="muted-note">
-            Hosted history stays in this browser session. Copy the journal before reloading.
-          </p>
-        )}
-        <footer className="app-footer">
-          <span>AI proposes. Policy constrains. You control execution.</span>
-          <span>
-            {mode === 'replay'
-              ? 'Synthetic replay · no chain transactions'
-              : 'Chain reads and reviewed wallet execution'}
-          </span>
-        </footer>
-      </main>
+        <ExplainabilityModal context={evidence} onClose={() => setEvidence(null)} />
+        {accessDialog}
+      </>
+    );
+  return (
+    <div className="aegis-app workspace-shell">
+      <AppSidebar
+        current="execution"
+        onHome={() => go('/')}
+        onOverview={() => go('/app')}
+        onExecution={() => {}}
+        onReplay={openReplay}
+        onOpenAiAccess={openAccess}
+      />
+      <div className="workspace-page-content">
+        <Header
+          showBrand={false}
+          isPaused={policy.is_paused}
+          onTogglePause={() => {
+            const next = { ...policyRef.current, is_paused: !policyRef.current.is_paused };
+            authorizationVersion.current++;
+            policyRef.current = next;
+            setPolicy(next);
+            invalidateProposal('Trading pause changed. Prepare a fresh proposal.');
+            setPlaying(false);
+          }}
+          operationMode={mode}
+          onToggleMode={(nextMode) => {
+            if (nextMode === modeRef.current) return;
+            authorizationVersion.current++;
+            modeRef.current = nextMode;
+            invalidateProposal('The workspace changed. Prepare a fresh proposal.');
+            setMode(nextMode);
+          }}
+          rpcLatencyMs={latency}
+          blockNumber={block}
+          chainId={status?.chainId}
+          marketTimestamp={state?.market.timestamp}
+          now={now}
+          walletAddress={wallet}
+          walletBalanceMon={balance}
+          isConnectingWallet={connecting}
+          onConnectWallet={() => void connect()}
+          onDisconnectWallet={disconnect}
+        />
+        <main className="app-main">
+          <section className="workspace-intro" aria-labelledby="workspace-title">
+            <div>
+              <span
+                className={'context-badge ' + (mode === 'replay' ? 'is-simulation' : 'is-live')}
+              >
+                {mode === 'replay' ? 'Synthetic replay' : 'Live market'}
+              </span>
+              <h1 id="workspace-title">
+                {mode === 'replay' ? 'See the safeguards work.' : 'Your risk. Your rules.'}
+              </h1>
+              <p>
+                {mode === 'replay'
+                  ? 'Explore a recommendation, inspect its constraints, and follow the paper outcome.'
+                  : 'Inspect real market data and review an exact MON sale before you sign.'}
+              </p>
+            </div>
+            <div className="workspace-context">
+              <strong>MON / USDC</strong>
+              <span>
+                {mode === 'replay'
+                  ? 'Heuristic assessment · paper execution'
+                  : 'Kuru · Monad ' + (status?.chainId ?? 'loading')}
+              </span>
+              <span className="source-pill">
+                {source === 'typesafe_jev'
+                  ? 'Jev assessment'
+                  : source === 'simulated'
+                    ? 'Heuristic replay assessment'
+                    : 'AI assessment unavailable'}
+              </span>
+            </div>
+          </section>
+          {notice && (
+            <div className="notice" role="status">
+              {notice}
+            </div>
+          )}
+          {marketError && (
+            <div className="notice" role="status">
+              {marketError}
+            </div>
+          )}
+          {mode === 'replay' && (
+            <ReplayControlBar
+              currentScenarioId={scenarioId}
+              onSelectScenario={(id) => {
+                authorizationVersion.current++;
+                invalidateProposal('The replay scenario changed. Prepare a fresh proposal.');
+                setScenarioId(id);
+              }}
+              isPlaying={playing}
+              onTogglePlay={() => inputsAreValid && setPlaying((previous) => !previous)}
+              onStepTick={() => void evaluate(true)}
+              onResetScenario={() => {
+                authorizationVersion.current++;
+                invalidateProposal('Replay reset. Prepare a fresh proposal.');
+                setResetVersion((previous) => previous + 1);
+              }}
+              currentTickIndex={tickIndex}
+              totalTicks={scenario.ticks.length}
+            />
+          )}
+          <div className={'workspace-grid ' + mode}>
+            <div className="assessment-slot">
+              {assessment ? (
+                <JevPolicyPanel
+                  snapshot={assessment}
+                  onOpenExplainability={openAssessmentEvidence}
+                />
+              ) : (
+                <section className="terminal-card empty-state">
+                  <h2>Assessment</h2>
+                  <p>{mode === 'live' ? 'Reading the Kuru market…' : 'Preparing replay…'}</p>
+                </section>
+              )}
+              {mode === 'live' && (
+                <section className="live-controls terminal-card" aria-label="Assessment controls">
+                  <p>
+                    Jev evaluates one captured observation. Each request uses the selected provider
+                    access.
+                  </p>
+                  <div className="control-actions">
+                    <button
+                      className="primary-button"
+                      disabled={
+                        busy ||
+                        !inputsAreValid ||
+                        aiAccess.jevFunding === 'disabled' ||
+                        (aiAccess.jevFunding === 'sponsored' && !aiStatus?.sessionActive)
+                      }
+                      onClick={() => void evaluate()}
+                    >
+                      Evaluate with Jev
+                    </button>
+                    <button onClick={openAccess}>AI access</button>
+                    <button
+                      disabled={busy || !inputsAreValid}
+                      onClick={() => void evaluate(false, false)}
+                    >
+                      Inspect safety state
+                    </button>
+                  </div>
+                </section>
+              )}
+            </div>
+            {assessment && (
+              <div className="decision-slot">
+                <DecisionFlow snapshot={assessment} onOpenEvidence={openAssessmentEvidence} />
+              </div>
+            )}
+            {mode === 'live' && (
+              <div className="trade-slot">
+                <TradeReview
+                  transaction={tradeState}
+                  prepared={prepared}
+                  now={now}
+                  chainId={status?.chainId}
+                  minimumMon={minimumMon}
+                  tradeSizeUsd={clip}
+                  busy={busy}
+                  hasWallet={Boolean(wallet)}
+                  canPrepare={Boolean(wallet && status && !policy.is_paused && inputsAreValid)}
+                  canSubmit={Boolean(
+                    wallet &&
+                      status &&
+                      !policy.is_paused &&
+                      inputsAreValid &&
+                      prepared &&
+                      prepared.id === tradeState.proposal?.id
+                  )}
+                  onPrepare={() => void prepareReduction()}
+                  onSubmit={() => void submitReduction()}
+                  onInspect={openTradeEvidence}
+                  onCheckConfirmation={() => void checkConfirmation()}
+                />
+              </div>
+            )}
+            {state && (
+              <div className="market-slot">
+                <MarketPanel
+                  key={mode + '-' + scenarioId + '-' + resetVersion}
+                  market={state.market}
+                  live={mode === 'live'}
+                  history={chartHistory}
+                />
+              </div>
+            )}
+            {state && (
+              <div className="portfolio-slot">
+                <PortfolioPanel
+                  hasWallet={Boolean(wallet)}
+                  position={state.position}
+                  orders={state.orders}
+                  policy={policy}
+                  risk={state.risk}
+                  live={mode === 'live'}
+                />
+              </div>
+            )}
+          </div>
+          <section className="mandate terminal-card" id="mandate" aria-labelledby="mandate-title">
+            <div className="panel-heading">
+              <div>
+                <h2 id="mandate-title">Your mandate</h2>
+                <p>Hard limits apply independently of the assessment.</p>
+              </div>
+              <span className={'context-badge ' + (policy.is_paused ? 'is-blocked' : '')}>
+                {policy.is_paused ? 'Paused' : 'Session policy'}
+              </span>
+            </div>
+            <div className="policy-primary">
+              {(['trade_size', 'max_position_usd', 'max_slippage_bps'] as PolicyInputKey[]).map(
+                policyField
+              )}
+            </div>
+            <details className="advanced-policy">
+              <summary>Advanced limits</summary>
+              <div className="policy-fields">
+                {(
+                  [
+                    'max_order_size',
+                    'max_daily_loss',
+                    'max_leverage',
+                    'min_liquidity_depth_usd',
+                  ] as PolicyInputKey[]
+                ).map(policyField)}
+              </div>
+            </details>
+            <p className="muted-note">
+              Valid edits apply immediately in this session and invalidate any prepared proposal.
+              Limits reset when you reload.
+            </p>
+            {mode === 'live' && (
+              <p className="coverage-note">
+                Wallet MON and USDC are available after connection. External positions, resting
+                orders, historical loss, drawdown and trade flow are not indexed. Unattended trading
+                is unavailable.
+              </p>
+            )}
+          </section>
+          <AuditTrailPanel
+            events={events}
+            exportLabel={
+              status?.journal === 'browser_session' ? 'Copy session JSON' : 'Save JSON to project'
+            }
+            onExport={() =>
+              status?.journal === 'browser_session'
+                ? void navigator.clipboard
+                    .writeText(JSON.stringify(events, null, 2))
+                    .then(() =>
+                      setNotice(
+                        'Session journal copied. Copy it before reloading; hosted history is session only.'
+                      )
+                    )
+                    .catch(() =>
+                      setNotice(
+                        'Clipboard access was blocked. Keep this session open to review its journal.'
+                      )
+                    )
+                : void api<{ savedPath: string }>('/api/audit/export', events)
+                    .then((result) => setNotice('Audit saved to ' + result.savedPath))
+                    .catch((error) => setNotice(error.message))
+            }
+          />
+          {status?.journal === 'browser_session' && (
+            <p className="muted-note">
+              Hosted history stays in this browser session. Copy the journal before reloading.
+            </p>
+          )}
+          <footer className="app-footer">
+            <span>AI proposes. Policy constrains. You control execution.</span>
+            <span>
+              {mode === 'replay'
+                ? 'Synthetic replay · no chain transactions'
+                : 'Chain reads and reviewed wallet execution'}
+            </span>
+          </footer>
+        </main>
+      </div>
       <ExplainabilityModal context={evidence} onClose={() => setEvidence(null)} />
+      {accessDialog}
     </div>
   );
 };

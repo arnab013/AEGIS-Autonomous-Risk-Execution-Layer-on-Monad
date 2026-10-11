@@ -1,24 +1,18 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Layers } from './icons.tsx';
 import type { MarketState } from '../types/index.ts';
 
 interface MarketPanelProps {
   market: MarketState;
   live?: boolean;
+  history?: { time: number; price: number }[];
 }
 
-export const MarketPanel: React.FC<MarketPanelProps> = ({ market, live = false }) => {
-  const [history, setHistory] = useState<{ time: number; price: number }[]>([]);
-  useEffect(() => {
-    setHistory([{ time: market.timestamp, price: market.mid_price }]);
-  }, [live]);
-  useEffect(() => {
-    setHistory((previous) =>
-      previous.some((point) => point.time === market.timestamp)
-        ? previous
-        : [...previous, { time: market.timestamp, price: market.mid_price }].slice(-60)
-    );
-  }, [market.timestamp, market.mid_price]);
+export const MarketPanel: React.FC<MarketPanelProps> = ({
+  market,
+  live = false,
+  history = [{ time: market.timestamp, price: market.mid_price }],
+}) => {
   const prices = history.map((point) => point.price);
   const low = prices.length ? Math.min(...prices) : market.mid_price;
   const high = prices.length ? Math.max(...prices) : market.mid_price;

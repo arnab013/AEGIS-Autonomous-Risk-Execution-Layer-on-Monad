@@ -41,11 +41,68 @@ async function body(req) {
   return JSON.parse(text);
 }
 
+const inferencePaths = new Set([
+  '/api/inference/session',
+  '/api/inference/status',
+  '/api/agent',
+  '/api/agent/approve',
+  '/api/agent/key-check',
+  '/api/jev',
+  '/api/news',
+]);
+
+async function inferenceRequest(req, origin) {
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(req.headers)) {
+    if (
+      value === undefined ||
+      ['host', 'connection', 'content-length', 'cf-connecting-ip'].includes(name)
+    )
+      continue;
+    headers.set(name, Array.isArray(value) ? value.join(', ') : value);
+  }
+  headers.set('CF-Connecting-IP', req.socket.remoteAddress ?? 'unavailable');
+  const cookie = headers.get('Cookie');
+  if (cookie)
+    headers.set('Cookie', cookie.replace(/(^|;\s*)aegis-ai-local=/g, '$1__Host-aegis-ai='));
+  let payload;
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    const chunks = [];
+    let length = 0;
+    for await (const chunk of req) {
+      length += chunk.byteLength;
+      if (length > 65_536) throw new TypeError('Request exceeds 64 KB');
+      chunks.push(chunk);
+    }
+    if (length) payload = Buffer.concat(chunks, length);
+  }
+  // The Vite proxy has already passed the origin guard; retain the browser's origin.
+  const base = origin ?? `http://${req.headers.host}`;
+  return new Request(new URL(req.url, base), {
+    method: req.method,
+    headers,
+    ...(payload ? { body: payload } : {}),
+  });
+}
+
+async function inferenceResponse(res, response) {
+  const headers = Object.fromEntries(response.headers);
+  if (headers['set-cookie']) {
+    // This gateway binds only to loopback HTTP. Production retains the secure __Host cookie.
+    headers['set-cookie'] = headers['set-cookie']
+      .replace(/^__Host-aegis-ai=/, 'aegis-ai-local=')
+      .replace(/; Secure(?=;|$)/i, '');
+  }
+  res.writeHead(response.status, headers);
+  res.end(Buffer.from(await response.arrayBuffer()));
+}
+
 export function createGateway({
   config,
   marketClient,
   buildRequest,
   validateResponse,
+  aiRuntime,
   fetchImpl = fetch,
   clock = Date.now,
 }) {
@@ -102,6 +159,18 @@ export function createGateway({
       )
         return json(res, 403, { error: 'Origin is not allowed' });
       const url = new URL(req.url, 'http://localhost');
+      const budgetedAi = config.aiEnabled === true || aiRuntime?.requestedEnabled === true;
+      if (
+        inferencePaths.has(url.pathname) &&
+        (budgetedAi || (aiRuntime && url.pathname !== '/api/jev'))
+      ) {
+        if (!aiRuntime) return json(res, 503, { error: 'The budgeted AI runtime is unavailable' });
+        const response = await aiRuntime.handle(await inferenceRequest(req, origin));
+        if (!response) return json(res, 404, { error: 'Unknown inference route' });
+        if (response.ok && ['/api/agent', '/api/jev'].includes(url.pathname))
+          counters.inferenceRequests++;
+        return await inferenceResponse(res, response);
+      }
       if (req.method === 'GET' && url.pathname === '/api/status')
         return json(res, 200, {
           inferenceEnabled: config.inferenceEnabled === true,
@@ -112,6 +181,9 @@ export function createGateway({
           rpcUrl: config.publicRpcUrl,
           counters,
           execution: 'wallet_review',
+          ...(budgetedAi
+            ? (aiRuntime?.describe?.() ?? { inferenceEnabled: false, jevConfigured: false })
+            : {}),
         });
       if (req.method === 'POST' && url.pathname === '/api/rpc') {
         const input = await body(req);
@@ -212,6 +284,12 @@ export function createGateway({
       }
       if (req.method === 'POST' && url.pathname === '/api/audit') {
         const event = await body(req);
+        if (
+          event.recommendation_reference !== undefined &&
+          (typeof event.recommendation_reference !== 'string' ||
+            !/^[a-zA-Z0-9_-]{1,160}$/.test(event.recommendation_reference))
+        )
+          return json(res, 422, { error: 'Invalid recommendation reference' });
         if (
           !event.id ||
           !event.timestamp ||

@@ -4,5 +4,12 @@
   "main": ".local/artifacts/cloudflare/worker.mjs",
   "compatibility_date": "2026-10-08",
   "workers_dev": true,
-  "observability": { "enabled": false }
+  "observability": { "enabled": false },
+  "durable_objects": { "bindings": [{ "name": "AI_BUDGET", "class_name": "AiBudgetLedger" }] },
+  "migrations": [{ "tag": "ai-budget-v1", "new_sqlite_classes": ["AiBudgetLedger"] }],
+  "vars": {
+    "AI_ENABLED": "true",
+    "SCOUT_PROJECT_PROVIDER": "google",
+    "TURNSTILE_SITE_KEY": "0x4AAAAAAFRyuQ7Xsx_0uipk"
+  },
 }

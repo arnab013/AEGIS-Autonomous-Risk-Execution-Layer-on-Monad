@@ -202,6 +202,14 @@ export const ExplainabilityModal: React.FC<ExplainabilityModalProps> = ({ contex
                       <dd>{assessment.input.position.spot_exposure_usd} USD</dd>
                     </div>
                     <div>
+                      <dt>MON before execution</dt>
+                      <dd>{assessment.holdings?.spot_balance_mon ?? 'Unavailable'}</dd>
+                    </div>
+                    <div>
+                      <dt>USDC before execution</dt>
+                      <dd>{assessment.holdings?.usdc_balance ?? 'Unavailable'}</dd>
+                    </div>
+                    <div>
                       <dt>Perpetual exposure</dt>
                       <dd>
                         {assessment.mode === 'live'

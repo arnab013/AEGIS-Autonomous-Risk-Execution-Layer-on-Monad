@@ -1,5 +1,8 @@
 import { KuruClient, kuruMainnetConfig } from '../src/execution/kuruClient.ts';
 import { MonadClient } from '../src/execution/monadClient.ts';
+import { handleInference, inferenceEnabled, JEV_MODEL } from './inference.ts';
+import type { InferenceEnv } from './inference.ts';
+export { AiBudgetLedger } from './ledger.ts';
 
 const readOnlyRpcMethods = new Set([
   'eth_chainId',
@@ -84,7 +87,7 @@ export function createWorker(
   options: { marketClient?: MarketClient; fetchImpl?: typeof fetch } = {}
 ) {
   return {
-    async fetch(request: Request, env: { ASSETS: AssetBinding }): Promise<Response> {
+    async fetch(request: Request, env: InferenceEnv & { ASSETS: AssetBinding }): Promise<Response> {
       const url = new URL(request.url);
       if (!url.pathname.startsWith('/api/')) {
         if (request.method !== 'GET' && request.method !== 'HEAD')
@@ -97,10 +100,10 @@ export function createWorker(
       try {
         if (request.method === 'GET' && url.pathname === '/api/status')
           return json(200, {
-            inferenceEnabled: false,
-            jevConfigured: false,
-            inferenceAccess: 'owner',
-            model: 'jev-latest',
+            inferenceEnabled: inferenceEnabled(env),
+            jevConfigured: Boolean(env.TYPESAFE_API_KEY),
+            inferenceAccess: 'visitor_trial',
+            model: JEV_MODEL,
             chainId: kuruMainnetConfig.chainId,
             marketAddress: kuruMainnetConfig.marketAddress,
             rpcUrl: kuruMainnetConfig.rpcUrl,
@@ -108,12 +111,6 @@ export function createWorker(
             journal: 'browser_session',
           });
 
-        // This public deployment has no persistent spending quota yet. Credentials cannot enable it.
-        if (request.method === 'POST' && url.pathname === '/api/jev')
-          return json(503, {
-            error:
-              'Paid Jev inference is disabled on this public deployment until owner access and a persistent spending limit are configured.',
-          });
         if (url.pathname === '/api/audit' || url.pathname === '/api/audit/export')
           return json(501, {
             error:
@@ -132,6 +129,11 @@ export function createWorker(
               options.fetchImpl ?? ((input, init) => globalThis.fetch(input, init))
             )
           );
+        const inferenceResponse = await handleInference(request, env, {
+          marketClient: client,
+          fetchImpl: options.fetchImpl,
+        });
+        if (inferenceResponse) return inferenceResponse;
         if (request.method === 'GET' && url.pathname === '/api/market')
           return json(200, await client.fetchSnapshot());
         if (request.method === 'GET' && url.pathname === '/api/portfolio')

@@ -46,6 +46,12 @@ const page = await request(current, '/', { headers: { Accept: 'text/html' } });
 assert.equal(page.status, 200);
 assert.match(await page.text(), /https:\/\/aegis\.himaloy2608\.workers\.dev/);
 report.checks.newPage = 'passed';
+for (const path of ['/app', '/app/workspace']) {
+  const response = await request(current, path, { headers: { Accept: 'text/html' } });
+  assert.equal(response.status, 200, path);
+  assert.match(await response.text(), /<div id="root"><\/div>/);
+}
+report.checks.appRoutes = 'passed';
 const manifest = JSON.parse(
   readFileSync(resolve(root, '.local/artifacts/cloudflare/manifest.json'), 'utf8')
 ).manifest;
@@ -62,9 +68,21 @@ for (const [path, expected] of Object.entries(manifest)) {
 }
 report.checks.newAssetIntegrity = 'passed';
 const status = await json(current, '/api/status');
-assert.equal(status.inferenceEnabled, false);
+assert.equal(status.inferenceEnabled, true);
 assert.equal(status.chainId, 143);
-report.checks.inferenceDisabled = 'passed';
+assert.equal(status.inferenceAccess, 'visitor_trial');
+const inference = await json(current, '/api/inference/status');
+assert.equal(inference.sessionActive, false);
+assert.equal(inference.jevConfigured, true);
+assert.equal(inference.agentConfigured, true);
+const expectedProvider =
+  process.argv.find((argument) => argument.startsWith('--provider='))?.slice(11) ?? 'mistral';
+const expectedModel =
+  process.argv.find((argument) => argument.startsWith('--model='))?.slice(8) ??
+  'mistral-small-2603';
+assert.equal(inference.agentProvider, expectedProvider);
+assert.equal(inference.model, expectedModel);
+report.checks.anonymousInferenceStatus = 'passed';
 const market = await json(current, '/api/market');
 assert.equal(market.source, 'kuru_rpc');
 assert.ok(market.bids.length && market.asks.length);
@@ -84,7 +102,22 @@ const rpc = await json(current, '/api/rpc', {
   params: [],
 });
 assert.equal(rpc.result, '0x8f');
-await json(current, '/api/jev', {}, 503);
+await json(current, '/api/jev', {}, 401);
+report.checks.anonymousInferenceBlocked = 'passed';
+const news = await json(current, '/api/news');
+assert.ok(Number.isFinite(news.fetchedAt));
+assert.ok(Array.isArray(news.articles));
+for (const article of news.articles) {
+  assert.ok(Number.isFinite(article.publishedAt));
+  assert.ok(
+    ['www.coindesk.com', 'coindesk.com', 'decrypt.co'].includes(new URL(article.url).hostname)
+  );
+}
+report.news = {
+  retrievedAt: news.fetchedAt,
+  articles: news.articles.length,
+  unavailableSources: news.unavailableSources,
+};
 report.checks.newApi = 'passed';
 const proposal = await json(current, '/api/prepare', {
   account: publicAccount,
@@ -138,11 +171,14 @@ if (includeLegacy) {
   const { assets } = JSON.parse(
     readFileSync(resolve(root, '.local/artifacts/cloudflare/legacy-assets.json'), 'utf8')
   );
-  const oldRoutes = Object.keys(assets).filter(
-    (path) => path.startsWith('/assets/') && !manifest[path]
+  const oldIndex = await request(previous, '/index.html');
+  assert.equal(oldIndex.status, 200);
+  const oldRoutes = [...(await oldIndex.text()).matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)].map(
+    (match) => match[1]
   );
   assert.ok(oldRoutes.length, 'The previous page assets must be retained');
   for (const path of oldRoutes) {
+    assert.ok(assets[path], `Preserved asset missing locally: ${path}`);
     const response = await request(previous, path);
     assert.equal(response.status, 200, path);
     const actual = Buffer.from(await response.arrayBuffer());

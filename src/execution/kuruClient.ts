@@ -225,6 +225,11 @@ function combineLevels(a: OrderBookLevel[], b: OrderBookLevel[], isBuy: boolean)
     .map(([price, size]) => ({ price, size }))
     .sort((x, y) => (isBuy ? y.price - x.price : x.price - y.price));
 }
+function unavailableSnapshotBlock(error: unknown): boolean {
+  return (
+    error instanceof Error && /^Monad RPC: Block requested not found(?:\.|$)/.test(error.message)
+  );
+}
 export function preparedTradeId(trade: Omit<KuruPreparedTrade, 'id'>): string {
   return keccak256(
     toHex(
@@ -298,8 +303,19 @@ export class KuruClient {
   public async fetchSnapshot(): Promise<KuruMarketData> {
     const start = performance.now();
     await this.monad.verifyNetwork();
+    try {
+      const block = await this.monad.request<string>('eth_blockNumber');
+      return await this.readSnapshotAt(block, start);
+    } catch (error) {
+      if (!unavailableSnapshotBlock(error)) throw error;
+    }
+    // A node may advertise a head before its state is readable. Discard the batch and recapture once.
+    await new Promise((resolve) => setTimeout(resolve, 200));
     const block = await this.monad.request<string>('eth_blockNumber');
-    const [code, rawParams, rawBook, rawVault, header] = await Promise.all([
+    return this.readSnapshotAt(block, start);
+  }
+  private async readSnapshotAt(block: string, start: number): Promise<KuruMarketData> {
+    const results = await Promise.allSettled([
       this.monad.request<string>('eth_getCode', [this.config.marketAddress, block]),
       this.read(kuruOrderbookAbi, this.config.marketAddress, 'getMarketParams', [], block),
       this.read(kuruOrderbookAbi, this.config.marketAddress, 'getL2Book', [], block),
@@ -309,7 +325,24 @@ export class KuruClient {
         number: string;
       }>('eth_getBlockByNumber', [block, false]),
     ]);
+    const failures = results.filter(
+      (result): result is PromiseRejectedResult => result.status === 'rejected'
+    );
+    if (failures.length)
+      throw (failures.find((result) => !unavailableSnapshotBlock(result.reason)) ?? failures[0])
+        .reason;
+    const [code, rawParams, rawBook, rawVault, header] = results.map((result) =>
+      result.status === 'fulfilled' ? result.value : undefined
+    ) as [string, unknown, unknown, unknown, { timestamp: string; number: string }];
     if (!code || code === '0x') throw new Error('Configured Kuru market has no deployed bytecode');
+    if (
+      !header ||
+      !/^0x[0-9a-fA-F]+$/.test(header.number) ||
+      !/^0x[0-9a-fA-F]+$/.test(header.timestamp)
+    )
+      throw new Error('Malformed Kuru snapshot block header');
+    if (BigInt(header.number) !== BigInt(block))
+      throw new Error('Kuru snapshot header differs from pinned RPC block');
     const p = rawParams as readonly [
       number,
       bigint,
