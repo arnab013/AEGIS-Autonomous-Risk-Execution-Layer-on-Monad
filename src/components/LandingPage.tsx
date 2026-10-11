@@ -280,7 +280,9 @@ export function LandingPage({
           )}
           <div className="landing-capabilities">
             <article>
-              <Layers aria-hidden="true" />
+              <span className="landing-capability-icon" aria-hidden="true">
+                <Layers />
+              </span>
               <h3>Context, with its source.</h3>
               <p>
                 Current market observations and sourced news help you ask better questions. Missing
@@ -288,7 +290,9 @@ export function LandingPage({
               </p>
             </article>
             <article>
-              <ShieldCheck aria-hidden="true" />
+              <span className="landing-capability-icon" aria-hidden="true">
+                <ShieldCheck />
+              </span>
               <h3>Checks, independent of AI.</h3>
               <p>
                 A recommendation cannot waive your mandate. Review the applicable checks and the
@@ -296,7 +300,9 @@ export function LandingPage({
               </p>
             </article>
             <article>
-              <Wallet aria-hidden="true" />
+              <span className="landing-capability-icon" aria-hidden="true">
+                <Wallet />
+              </span>
               <h3>A review you can act on.</h3>
               <p>
                 Prepare a MON → USDC sale, inspect exact terms and follow submitted transactions

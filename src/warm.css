@@ -431,7 +431,7 @@ button.warm-wordmark {
   margin-right: auto;
 }
 .landing-product-preview {
-  margin: 0 0 40px;
+  margin: 0 0 28px;
   padding: 16px;
   border-radius: 30px;
   background: var(--warm-peach);
@@ -452,24 +452,51 @@ button.warm-wordmark {
 .landing-capabilities {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 40px;
+  gap: 22px;
 }
 .landing-capabilities article {
-  padding: 20px 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 30px;
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  background: var(--surface);
+  box-shadow: 0 4px 16px #26252204;
+}
+.landing-capability-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 24px;
+  border-radius: 14px;
+  background: var(--warm-butter);
+}
+.landing-capabilities article:nth-child(2) .landing-capability-icon {
+  background: var(--warm-sage);
+}
+.landing-capabilities article:nth-child(3) .landing-capability-icon {
+  background: var(--warm-peach);
 }
 .landing-capabilities svg {
-  width: 27px;
-  height: 27px;
+  display: block;
+  width: 24px;
+  height: 24px;
   color: var(--accent);
-  margin-bottom: 22px;
 }
 .landing-capabilities h3 {
   font-size: 22px;
-  margin-bottom: 12px;
+  line-height: 1.3;
+  min-height: 2.6em;
+  margin: 0 0 14px;
+  text-wrap: balance;
 }
 .landing-capabilities p {
-  font-size: 14px;
-  line-height: 1.75;
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.7;
 }
 .landing-scope {
   display: flex;
@@ -1950,6 +1977,28 @@ button.warm-wordmark {
   .landing-problem-grid h3 {
     font-size: 21px;
   }
+  .landing-capabilities {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+  .landing-capabilities article {
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr);
+    column-gap: 22px;
+    padding: 28px;
+  }
+  .landing-capability-icon {
+    grid-row: 1 / 3;
+    margin-bottom: 0;
+  }
+  .landing-capabilities h3 {
+    min-height: 0;
+    margin-bottom: 10px;
+    text-wrap: initial;
+  }
+  .landing-capabilities p {
+    grid-column: 2;
+  }
   .warm-dashboard {
     grid-template-columns: 1fr;
   }
@@ -2051,14 +2100,19 @@ button.warm-wordmark {
     font-size: 24px;
   }
   .landing-capabilities {
-    gap: 8px;
+    gap: 16px;
   }
   .landing-capabilities article {
-    border-bottom: 1px solid var(--border);
-    padding: 22px 0;
+    display: flex;
+    padding: 24px;
+    border-radius: 22px;
   }
-  .landing-capabilities svg {
-    margin-bottom: 15px;
+  .landing-capability-icon {
+    margin-bottom: 20px;
+  }
+  .landing-capabilities h3 {
+    font-size: 21px;
+    margin-bottom: 12px;
   }
   .landing-product .landing-section-heading {
     text-align: left;

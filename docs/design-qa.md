@@ -34,6 +34,12 @@ Every API response in this browser run was intercepted. The screenshots contain 
 
 Actual populated market screenshots were refreshed separately at **22:06:30 UTC on 11 October** with `scripts/capture-live-ui.mjs` under `.local/screenshots/live-warm`. The homepage's `/dashboard-preview.png` came from an earlier actual app capture. These captures do not demonstrate an AI response or signed fill.
 
+## Homepage card spacing
+
+The three capability cards now have cream surfaces, rounded borders and consistent internal padding. Butter, sage and peach badges group their icons. Desktop keeps three equal-height columns with aligned copy; tablet uses horizontal stacked cards, and mobile places the icon above the text. The gap beneath the dashboard preview is smaller.
+
+The production build passed focused layout checks before publishing. The actual hosted update, version **`e6f9d053-1a23-420f-ab5d-bab07f55547c`**, passed the same checks at **22:27:03 UTC on 11 October / 00:27:03 CEST on 12 October** across all seven listed sizes and a 900-pixel tablet width. Internal padding was at least 24 pixels; desktop gaps were 22 pixels, tablet gaps 18 and mobile gaps 16. No document or card overflow occurred. Desktop, tablet and mobile captures were visually inspected. The run blocked API and external requests and made zero AI calls or wallet actions, with no browser page errors. Reports and captures are under `.local/screenshots/homepage-cards` and `.local/screenshots/homepage-cards-live`.
+
 ## Live trial widget
 
 A separate live probe at **22:04:54 UTC on 11 October / 00:04:54 CEST on 12 October** loaded the official Turnstile script and one challenge frame. At 360 pixels, the native compact iframe measured **150 × 140 pixels** and the dialog's client and scroll widths were both **322 pixels**. The widget and controls were visible without horizontal clipping. The component selects native compact sizing when its panel has less than 300 pixels; the normal size is used with sufficient space. These sizes follow [Cloudflare's widget configuration](https://developers.cloudflare.com/turnstile/get-started/client-side-rendering/widget-configurations/).
