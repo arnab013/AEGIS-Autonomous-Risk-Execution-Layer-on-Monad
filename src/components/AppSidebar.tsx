@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Activity, Cpu, Layers, Play, Shield, ShieldCheck } from './icons.tsx';
+import { Activity, Cpu, Layers, Play, ShieldCheck } from './icons.tsx';
+import { BrandMark } from './BrandMark.tsx';
 
 interface AppSidebarProps {
   current: 'overview' | 'execution';
@@ -29,7 +30,7 @@ export function AppSidebar({
       aria-label="Workspace navigation"
     >
       <button className="warm-wordmark" onClick={() => visit(onHome)} aria-label="Aegis home">
-        <Shield aria-hidden="true" />
+        <BrandMark />
         <span>Aegis</span>
       </button>
       <button

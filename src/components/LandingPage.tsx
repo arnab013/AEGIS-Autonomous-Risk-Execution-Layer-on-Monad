@@ -1,5 +1,6 @@
 import React from 'react';
-import { ArrowUpRight, Check, Layers, Shield, ShieldCheck, Wallet } from './icons.tsx';
+import { ArrowUpRight, Check, Layers, ShieldCheck, Wallet } from './icons.tsx';
+import { BrandMark } from './BrandMark.tsx';
 
 export interface LandingPageProps {
   onOpenDashboard: () => void;
@@ -44,7 +45,7 @@ export function LandingPage({
       </a>
       <header className="landing-header">
         <a className="warm-wordmark" href="#landing-main" aria-label="Aegis home">
-          <Shield aria-hidden="true" /> <span>Aegis</span>
+          <BrandMark /> <span>Aegis</span>
         </a>
         <nav aria-label="Main navigation">
           <a
@@ -342,7 +343,7 @@ export function LandingPage({
       <footer className="landing-footer">
         <div>
           <a className="warm-wordmark" href="#landing-main">
-            <Shield aria-hidden="true" />
+            <BrandMark />
             <span>Aegis</span>
           </a>
           <p>AI proposes. Policy constrains. You control execution.</p>

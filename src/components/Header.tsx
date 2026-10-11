@@ -1,5 +1,6 @@
 import React from 'react';
-import { Shield, Pause, Play, Activity } from './icons.tsx';
+import { Pause, Play, Activity } from './icons.tsx';
+import { BrandMark } from './BrandMark.tsx';
 
 interface HeaderProps {
   showBrand?: boolean;
@@ -44,7 +45,7 @@ export function Header({
       {showBrand && (
         <div className="brand">
           <span className="brand-mark">
-            <Shield aria-hidden="true" />
+            <BrandMark />
           </span>
           <div>
             <strong>Aegis</strong>

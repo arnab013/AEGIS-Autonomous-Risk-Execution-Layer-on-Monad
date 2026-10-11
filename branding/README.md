@@ -6,6 +6,8 @@ Use `aegis-competition-logo.png` for the competition's project thumbnail. It use
 - `aegis-icon-transparent.png`: transparent emblem without lettering.
 - `aegis-competition-logo.png`: square icon on an ivory background, ready to upload.
 
+The app uses the transparent emblem beside its Aegis wordmark in the homepage header and footer and the workspace sidebar. `src/components/BrandMark.tsx` shares that asset across these placements. The browser tab icon uses the same image. Vite gives the image a hashed URL when building, so updates can load without reusing an older cached logo.
+
 The design pairs a protective shield with an A monogram. The palette follows the app: terracotta (#B44A34), charcoal (#262522), and ivory (#F6F3ED). These are the requested design colors; the generated raster includes slight tonal variation.
 
 Created on 12 October 2026 with the built-in image generation tool. No public competition specification for logo dimensions or file size was found. Check the upload form for any additional limits.

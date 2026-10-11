@@ -32,13 +32,19 @@ Entrance animations and component transitions were detected on each page. The re
 
 Every API response in this browser run was intercepted. The screenshots contain labelled fixture market, news and model data. The wallet fixture can connect for interface checks and rejects signing. The run made zero paid inference calls, zero signing attempts and zero external requests, with no browser page errors. Real provider, feed, RPC and transaction results are recorded separately in [verification](verification.md).
 
-Actual populated market screenshots were refreshed separately at **22:06:30 UTC on 11 October** with `scripts/capture-live-ui.mjs` under `.local/screenshots/live-warm`. The homepage's `/dashboard-preview.png` came from an earlier actual app capture. These captures do not demonstrate an AI response or signed fill.
+Actual populated market screenshots were refreshed separately at **22:06:30 UTC on 11 October** with `scripts/capture-live-ui.mjs` under `.local/screenshots/live-warm`. The homepage's `/dashboard-preview.png` was subsequently refreshed at **22:32 UTC on 11 October / 00:32 CEST on 12 October** from the actual local production dashboard, with a successful real market read and the new Aegis emblem. Inference was disabled and browser writes were blocked; its report is `.local/screenshots/logo-preview/report.json`. These captures do not demonstrate an AI response or signed fill.
 
 ## Homepage card spacing
 
 The three capability cards now have cream surfaces, rounded borders and consistent internal padding. Butter, sage and peach badges group their icons. Desktop keeps three equal-height columns with aligned copy; tablet uses horizontal stacked cards, and mobile places the icon above the text. The gap beneath the dashboard preview is smaller.
 
 The production build passed focused layout checks before publishing. The actual hosted update, version **`e6f9d053-1a23-420f-ab5d-bab07f55547c`**, passed the same checks at **22:27:03 UTC on 11 October / 00:27:03 CEST on 12 October** across all seven listed sizes and a 900-pixel tablet width. Internal padding was at least 24 pixels; desktop gaps were 22 pixels, tablet gaps 18 and mobile gaps 16. No document or card overflow occurred. Desktop, tablet and mobile captures were visually inspected. The run blocked API and external requests and made zero AI calls or wallet actions, with no browser page errors. Reports and captures are under `.local/screenshots/homepage-cards` and `.local/screenshots/homepage-cards-live`.
+
+## Aegis brand mark
+
+The generated emblem now replaces the generic brand shield in the homepage header/footer and the overview/execution sidebars. The browser tab icon uses the same Vite-hashed PNG. Visible Aegis text and existing control names supply the accessible label; the adjacent image has an empty alternative to avoid repeating it. The 40-pixel image box reserves its space while loading.
+
+Focused logo checks passed locally and on the actual hosted release **`a5bc843a-ade8-4fde-ba21-a0535ea8bb96`** at **22:35:13 UTC on 11 October / 00:35:13 CEST on 12 October**. All three routes were checked at the seven listed viewports, with loaded images, matching favicon URLs, keyboard focus, accessible names and no overflow. The served PNG matched the generated original byte for byte. Desktop and mobile header, sidebar and footer captures were visually inspected. API and external browser requests were blocked; no inference or wallet actions occurred. Reports and captures are under `.local/screenshots/logo-local` and `.local/screenshots/logo-live`.
 
 ## Live trial widget
 

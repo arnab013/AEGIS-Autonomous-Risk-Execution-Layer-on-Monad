@@ -112,11 +112,16 @@ button.warm-wordmark {
   padding: 0;
   justify-content: start;
 }
-.warm-wordmark svg {
-  width: 27px;
-  height: 27px;
-  color: var(--accent);
-  stroke-width: 1.7;
+.aegis-logo-mark {
+  display: block;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+.brand-mark .aegis-logo-mark {
+  width: 38px;
+  height: 38px;
 }
 .warm-eyebrow {
   display: inline-flex;
