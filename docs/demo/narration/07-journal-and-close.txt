@@ -1,0 +1,3 @@
+The journal connects each observation, assessment, check, and outcome. On the hosted app, these records last for the session.
+
+Aegis currently focuses on MON reductions and session policy changes. It brings the evidence together, keeps your limits visible, and leaves the final transaction approval with you.

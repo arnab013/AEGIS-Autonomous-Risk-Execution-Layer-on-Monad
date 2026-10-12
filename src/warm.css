@@ -503,23 +503,6 @@ button.warm-wordmark {
   font-size: 15px;
   line-height: 1.7;
 }
-.landing-scope {
-  display: flex;
-  gap: 12px;
-  padding: 22px 24px;
-  border-radius: 18px;
-  background: var(--warm-sage);
-  margin-top: 32px;
-}
-.landing-scope svg {
-  color: #476047;
-  margin-top: 2px;
-}
-.landing-scope p {
-  font-size: 13px;
-  line-height: 1.7;
-  color: #495741;
-}
 .landing-final-cta {
   background: var(--warm-peach);
   border-radius: 32px;
@@ -555,6 +538,46 @@ button.warm-wordmark {
 .landing-footer > div:nth-child(2) > span {
   font-size: 12px;
   font-weight: 600;
+}
+.landing-footer .landing-copyright {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.landing-about {
+  margin-top: 16px;
+}
+.landing-about > summary {
+  width: fit-content;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+.landing-about > summary::marker {
+  color: var(--accent);
+}
+.landing-about[open] > summary {
+  margin-bottom: 14px;
+}
+.landing-about-copy {
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface);
+}
+.landing-about-copy p {
+  margin: 0 0 12px;
+  max-width: none;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.landing-about-copy p:last-child {
+  margin-bottom: 0;
+}
+.landing-about-copy h3 {
+  margin: 22px 0 10px;
+  font-size: 15px;
+  line-height: 1.4;
 }
 
 /* The overview keeps the conversation prominent while evidence remains alongside it. */
@@ -2129,9 +2152,6 @@ button.warm-wordmark {
   .landing-product-preview figcaption {
     font-size: 11px;
     padding: 12px 8px 6px;
-  }
-  .landing-scope {
-    padding: 18px;
   }
   .landing-final-cta {
     border-radius: 25px;

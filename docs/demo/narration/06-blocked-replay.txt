@@ -1,0 +1,5 @@
+Next, this oversized-proposal replay uses synthetic market data and a heuristic assessment.
+
+An increase is proposed, but the position cap blocks it. The evidence shows the failed check and captured inputs.
+
+Replay uses paper holdings; it does not submit a transaction or spend wallet funds.

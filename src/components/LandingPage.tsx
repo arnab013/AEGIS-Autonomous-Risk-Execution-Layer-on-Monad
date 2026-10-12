@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowUpRight, Check, Layers, ShieldCheck, Wallet } from './icons.tsx';
+import { ArrowUpRight, Layers, ShieldCheck, Wallet } from './icons.tsx';
 import { BrandMark } from './BrandMark.tsx';
 
 export interface LandingPageProps {
@@ -311,14 +311,6 @@ export function LandingPage({
               </p>
             </article>
           </div>
-          <div className="landing-scope">
-            <Check aria-hidden="true" />
-            <p>
-              Live market reads and sale simulation have been verified. Wallet execution requires
-              your approval; signed execution is still being validated. Replay is synthetic paper
-              activity. AI usage depends on your access settings and available budget.
-            </p>
-          </div>
         </section>
 
         <section className="landing-final-cta" aria-labelledby="final-cta-title">
@@ -348,12 +340,33 @@ export function LandingPage({
           </a>
           <p>AI proposes. Policy constrains. You control execution.</p>
         </div>
-        <div>
+        <div className="landing-footer-meta">
+          <p className="landing-copyright">© {new Date().getFullYear()} Arnab Saha.</p>
           <span>Built for Monad · Kuru MON / USDC</span>
-          <p>
-            An experimental MVP. Trading performance has not been established. Developed with OpenAI
-            Codex; pre-existing work and dependencies retain their attribution.
-          </p>
+          <details className="landing-about" id="about-aegis">
+            <summary>About Aegis</summary>
+            <div className="landing-about-copy">
+              <p>
+                Developed by <strong>Arnab Saha</strong>.
+              </p>
+              <p>
+                Aegis brings market evidence, AI findings and your session limits together before
+                wallet review on Monad.
+              </p>
+              <h3>Prototype status</h3>
+              <p>
+                Live market reads and sale simulation have been verified. Wallet execution requires
+                your approval; signed execution is still being validated. Replay is synthetic paper
+                activity. AI usage depends on your access settings and available budget.
+              </p>
+              <p>This is an experimental MVP. Trading performance has not been established.</p>
+              <h3>Build and attribution</h3>
+              <p>
+                Built with assistance from OpenAI Codex. Pre-existing work and dependencies retain
+                their attribution and licenses in the project documentation.
+              </p>
+            </div>
+          </details>
         </div>
       </footer>
     </div>

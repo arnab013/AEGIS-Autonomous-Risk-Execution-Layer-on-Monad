@@ -46,6 +46,12 @@ The generated emblem now replaces the generic brand shield in the homepage heade
 
 Focused logo checks passed locally and on the actual hosted release **`a5bc843a-ade8-4fde-ba21-a0535ea8bb96`** at **22:35:13 UTC on 11 October / 00:35:13 CEST on 12 October**. All three routes were checked at the seven listed viewports, with loaded images, matching favicon URLs, keyboard focus, accessible names and no overflow. The served PNG matched the generated original byte for byte. Desktop and mobile header, sidebar and footer captures were visually inspected. API and external browser requests were blocked; no inference or wallet actions occurred. Reports and captures are under `.local/screenshots/logo-local` and `.local/screenshots/logo-live`.
 
+## Copyright and About
+
+The homepage footer now shows **© 2026 Arnab Saha**. Its native About disclosure credits **Arnab Saha** as developer and preserves the prototype status, signing limits, synthetic replay labels, AI access/budget context and build attribution. The former status panel below the capability cards has been removed, and the detailed notes are collapsed in the footer by default.
+
+The actual hosted release **`13a541fd-d085-4f5f-ae16-d5ce010320d2`** passed checks at **03:53:09 UTC / 05:53:09 CEST on 12 October** at all seven listed sizes with About both closed and open. Enter/Space toggling, footer link focus, exact credits and retained disclosures passed. No overflow, clipping or page errors occurred. Desktop and mobile screenshots were visually inspected. API and external requests were blocked; no inference or wallet actions ran. Reports and captures are under `.local/screenshots/footer-about-local` and `.local/screenshots/footer-about-live`.
+
 ## Live trial widget
 
 A separate live probe at **22:04:54 UTC on 11 October / 00:04:54 CEST on 12 October** loaded the official Turnstile script and one challenge frame. At 360 pixels, the native compact iframe measured **150 × 140 pixels** and the dialog's client and scroll widths were both **322 pixels**. The widget and controls were visible without horizontal clipping. The component selects native compact sizing when its panel has less than 300 pixels; the normal size is used with sufficient space. These sizes follow [Cloudflare's widget configuration](https://developers.cloudflare.com/turnstile/get-started/client-side-rendering/widget-configurations/).

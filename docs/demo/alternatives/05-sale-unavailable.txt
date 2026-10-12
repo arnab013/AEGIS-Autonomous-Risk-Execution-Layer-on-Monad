@@ -1,0 +1,5 @@
+In Market and execution, a MON reduction must pass the current checks before it can be prepared.
+
+Here, the app shows why preparation is unavailable. Aegis needs verified wallet inventory, a valid amount, and current market evidence.
+
+The blocker stays visible. No transaction has been submitted, and I have not signed a sale. This recording demonstrates the checks, rather than a simulated or confirmed fill.

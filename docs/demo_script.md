@@ -2,13 +2,17 @@
 
 Record at most three minutes of actual operation, as required by the [competition rules](https://hackathon.monad.xyz/api/v1/policies/current). Real Jev and Google-backed Scout responses have passed, including a confirmed session policy edit. Wallet-signed execution remains unverified.
 
+Use the [recording guide](demo/recording-guide.md) and [clean narration](demo/narration-full.txt) for the current video. Seven separate narration clips and alternative sale segments are in `docs/demo/`. The default 330-word script shows a sale simulation, with an alternative when preparation is blocked. Generate the audio in ElevenLabs, then record and sync the actual app screens using the guide's cues. Use the confirmed-sale narration only after recording a matching successful receipt and USDC delivery.
+
 ## Before recording
 
 Start from the configured F: workspace. Check /api/status, chain, market, freshness and current size limits. Mainnet is the default; the documented testnet market lacked executable bids.
 
 The approved application AI allowance is US$10, split into US$2 implementation and US$8 public review. Check remaining budget and provider availability before recording. Every transaction needs the user's explicit wallet signing action. Choose an amount that fits contract precision/minimum, wallet inventory and user limits, leaving MON for gas. If the minimum order fails the mandate, resolve that mismatch before recording.
 
-## Three minutes
+## Optional sequence after signed execution is verified
+
+This sequence includes wallet signing. The current narration guide above uses simulation as its default sale segment.
 
 | Time      | Action                                                 | Point to explain                                                                   |
 | --------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------- |
