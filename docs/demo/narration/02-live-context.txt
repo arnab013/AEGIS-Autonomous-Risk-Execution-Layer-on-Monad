@@ -1,3 +1,0 @@
-Aegis reads the MON and U S D C market directly from Kuru on Monad. Here we can inspect price, liquidity, the observed block, and freshness.
-
-Wallet context appears when a wallet is connected. The session limits stay visible beside the market.

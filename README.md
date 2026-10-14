@@ -1,91 +1,82 @@
+<img src="branding/aegis-icon-transparent.png" alt="Aegis logo" width="72" />
+
 # Aegis
 
-Aegis brings market evidence, Jev assessments and Scout, its assistant, into one MON/USDC workspace on Monad. The app can explain an observation, propose a session policy edit or prepare a MON reduction. Application code checks the proposal; the user confirms the change and signs any transaction separately in their wallet.
+**Understand your exposure. Make your next move with context.**
 
-Open the [live app](https://aegis.himaloy2608.workers.dev). The homepage has Home and Dashboard links. Inside the app, Home, Overview and Market & execution live in the left navigation, with a collapsible menu on mobile. `/app` contains chat and evidence; `/app/workspace` contains detailed market, policies and trade review. Navigation keeps one session. Reloading clears conversations, policies, user keys and the hosted journal. The previous address preserves API and asset compatibility for already-open sessions.
+Fast markets scatter the information you need across charts, headlines and your wallet. Aegis brings that context together, explains where you stand and helps you review a decision against your own trading limits.
 
-AI access has independent settings for Jev and Scout: a project-funded trial, your own API key, or disabled. Scout accepts Mistral, OpenAI, Anthropic and Google AI keys. Choose the vendor before entering its key. Check key makes a read-only model request; it does not generate a reply or establish available generation quota. The sponsored trial uses the configured project provider, requires a Turnstile check and has a persistent US$10 application allowance: US$2 for implementation verification and US$8 for public review. See [AI access](docs/ai_access.md) for supported models, limits and key handling. Market reads and built-in replay do not require inference.
+Built on Monad, Aegis combines live market data with Scout, an AI copilot you can ask about the market, your holdings and your limits. When you decide to reduce MON exposure, it prepares a MON → USDC sale with exact terms for you to review. You keep the final say: policy changes require confirmation, and transactions require your wallet signature.
 
-## Current status
+[Open Aegis](https://aegis.himaloy2608.workers.dev/) · [Dashboard](https://aegis.himaloy2608.workers.dev/app) · [Market & execution](https://aegis.himaloy2608.workers.dev/app/workspace)
 
-| Feature                      | Status                                                                                                                                                                                                                 |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Kuru market and wallet reads | Verified on mainnet, including orderbook/AMM depth and MON/USDC balances                                                                                                                                               |
-| Protective MON sale          | Real calldata simulation and gas estimation passed; wallet submission and receipt reconciliation are implemented but have not been exercised with a signed trade                                                       |
-| Jev and Scout                | Real Jev and Google-backed Scout responses passed, with captured inputs, explicit policy approval and stale/duplicate approval rejection. Mistral returned HTTP 429; OpenAI/Anthropic generation remain unverified |
-| Replay                       | Five synthetic scenarios with heuristic probabilities and paper accounting                                                                                                                                             |
-| Policy checks                | Editable limits, liquidity/slippage checks, stale-data rejection and blocked proposals                                                                                                                                 |
-| Journal                      | Persistent local SHA-256 chain; the hosted app keeps a browser-session journal with a copy/export control                                                                                                              |
-| Hosting                      | Cloudflare Worker at a free workers.dev subdomain; public browser and mainnet simulation checks passed                                                                                                                 |
-| PolicyGuard                  | Compiled and tested in a local EVM; separate from direct wallet sales, with no Monad deployment or security audit                                                                                                      |
+![Aegis dashboard](public/dashboard-preview.png)
 
-Perpl, Envio indexing and the MetaMask Agent Wallet plugin are not integrated. Live historical losses, resting orders and external positions are unavailable, so unattended trading is disabled.
+## What you can do
 
-The [verification report](docs/verification.md) records 524 tests, hosted browser checks and real API results. The user has also confirmed a Scout reply through the public trial after visitor verification. Public source visibility, the submission video and signed-sale validation remain outstanding. The redesign uses the existing codex/aegis-risk-control-mvp branch; preserve the original history and build-window disclosures.
+- **Read the market:** inspect the Kuru MON/USDC book, liquidity, observation time and connected-wallet balances on Monad Mainnet.
+- **Ask Scout:** get an explanation grounded in captured market context, your session limits, dated news and a separate structured Jev assessment.
+- **Set your limits:** review and confirm suggested policy changes, or edit valid limits directly. Changes invalidate prepared trades.
+- **Review a sale:** run policy checks and a real onchain simulation, then inspect the exact MON amount, minimum USDC output, gas estimate and expiry before opening your wallet.
+- **Explore replay:** step through five synthetic scenarios, inspect blocked proposals and see paper outcomes without a wallet or API key.
+- **Follow the evidence:** inspect the original inputs, policy results and transaction state in the decision flow and journal.
+
+## Try it
+
+Open the dashboard and select **AI access**. Jev and Scout each support a project-funded trial, your own API key, or disabled access. The trial requires visitor verification and is subject to available budget. Scout supports keys from Google, Mistral, OpenAI and Anthropic; user keys stay in memory and clear on reload.
+
+Try asking: “Explain the current market and my limits.” Connect a browser wallet on Monad Mainnet to include verified MON and USDC balances. Replay and market reads work without paid AI.
+
+Conversations, policies and the hosted journal last for the current session. Navigation preserves them; reloading clears them. The durable AI ledger stores spending and approval state separately.
 
 ## Run locally
 
-Use Node.js 22.14 or later. All project writes must stay under F:\Projects\Monad Metropolis.
+Requirements: **Node.js 22.14+**, npm and Git. The commands below use PowerShell. This project's storage helpers keep caches and generated artifacts inside the checkout and require a location outside the Windows C: drive.
 
 ```powershell
-Set-Location 'F:\Projects\Monad Metropolis'
+git clone https://github.com/arnab013/AEGIS-Autonomous-Risk-Execution-Layer-on-Monad.git aegis
+Set-Location aegis
 . .\scripts\setup_env.ps1
 npm ci
-if (!(Test-Path -LiteralPath '.env')) { Copy-Item -LiteralPath '.env.example' -Destination '.env' }
+if (!(Test-Path -LiteralPath '.env')) {
+    Copy-Item -LiteralPath '.env.example' -Destination '.env'
+}
 npm run dev
 ```
 
-Skip npm ci if node_modules already matches the lockfile. Preserve an existing .env. Open [localhost:3000](http://localhost:3000); development runs Vite on port 3000 and the API on 3001.
-
-For contract tools, tests and a production build:
+Open [localhost:3000](http://localhost:3000). Vite serves the frontend on port 3000 and proxies the Node API on port 3001. AI is disabled in the example configuration; market reads and replay need no provider key. See [configuration and deployment](docs/deployment.md) to enable the AI gateway.
 
 ```powershell
+# Run in the same session after setup_env.ps1
 npm run setup:contracts
 npm test
 npm run build
+npm run verify:storage
 npm start
 ```
 
-Start serves the built app and API together on localhost:3000. Vite preview serves only the frontend. The environment script keeps caches and temporary files under .local; see the [storage policy](docs/local_storage_policy.md) before using other tools.
+`npm start` serves the production build and API together on port 3000. Contract tools are needed for the local PolicyGuard tests, not for using the app. Tests mock AI providers and make no paid inference requests.
 
-## Configuration and use
+## How it works
 
-```dotenv
-AEGIS_NETWORK=mainnet
-TYPESAFE_API_KEY=
-JEV_ENABLE_LIVE=false
-AI_ENABLED=false
-MISTRAL_API_KEY=
-GEMINI_API_KEY=
-SCOUT_PROJECT_PROVIDER=mistral
-AI_SESSION_SECRET=
-AI_IMPLEMENTATION_TOKEN=
-TURNSTILE_SECRET_KEY=
-TURNSTILE_SITE_KEY=
-```
+React and TypeScript share one session across the homepage, dashboard and trade workspace. The Node/Cloudflare gateway reads Monad through viem, obtains Jev's typed findings through TypeSafe, retrieves allowlisted news and requests Scout's explanation. Deterministic application checks govern every supported action. Server-issued approvals are bound to the intent, account, chain and policy revision, expire and can be used only once.
 
-Project keys stay on the server; never prefix them with VITE\_. Jev pins `jev-1.13.0`; Scout uses one allowed model per vendor, listed in [AI access](docs/ai_access.md). Set AI_ENABLED only with server secrets and the persistent ledger configured. Hosted project keys are configured as Cloudflare secrets; local AI remains disabled. The older JEV_ENABLE_LIVE flag is a legacy local adapter; keep it false for the shared agent workflow. The wallet flow needs no private key or seed phrase.
+The hosted app runs on Cloudflare Workers. A SQLite Durable Object enforces sponsored AI spending, quotas and consumed approvals across deployments. Provider secrets stay on the server; signing stays in the connected wallet.
 
-`npm run setup:typesafe` reads F:\Projects\jev_key.txt into the ignored server .env. For optional local Scout access, `node scripts/setup-ai.mjs --mistral` accepts a key through hidden input or standard input and configures the ignored server environment. These commands make no inference request. The official TypeSafe skill is vendored under skills/typesafe-ai with its license.
+## Scope
 
-Choose Explore a replay, then use Step or Play. Scenario 5 shows an increase blocked near the position cap. Scenario 4 shows a hedge proposal rejected when the stressed book fails slippage and depth limits. Replay probabilities are heuristic and fills are paper records.
+Live execution currently supports MON reductions through the Kuru MON/USDC market. Buying, perpetual hedging, external orders and unattended trading are unavailable. Historical wallet losses and external positions are not indexed. Jev probabilities compare its supplied choices; they are not a forecast of trading success. Replay is synthetic paper activity.
 
-Live mode defaults to mainnet. Inspect the market and connected-wallet holdings, then prepare a MON reduction. The proposal shows amount, expected/minimum USDC output, target, slippage and expiry. Confirm in wallet requests signing. Keep MON for gas and fit the contract's current minimum/precision as well as your limits. The observed mainnet minimum was about 200 MON; the app reads it from the contract.
-
-AEGIS_NETWORK=testnet selects chain 10143 instead of 143. The documented testnet market lacked bids during development and fails the two-sided-book check when liquidity is unavailable.
-
-## Competition and provenance
-
-The [official rules](https://hackathon.monad.xyz/api/v1/policies/current), checked again on 12 October, require public licensed GitHub source, build-window history, AI-tool disclosure, Monad deployment evidence and a demo of at most three minutes. The deadline is **14 October 2026, 05:59 CEST in Paris**. Detailed sponsor criteria still need review in the authenticated platform.
-
-The supplied project already contained the React terminal, scenario fixtures, market/risk interfaces and placeholder integration clients. This work adds real Kuru reads and the reviewed sale path, server-side Jev transport/validation, paper accounting, stronger policy checks and source labels. Preserve the foundation's actual commit dates and identify it as pre-existing work in the submission.
-
-OpenAI Codex assisted with research, implementation, tests and documentation. React, Vite, TypeScript, viem, Vitest and other dependencies retain their own licenses; see package.json and package-lock.json. Aegis uses the [MIT license](LICENSE). Trading performance and production security have not been established.
+Live reads, real Jev/Scout responses and sale simulation have been verified. Signed-sale receipt reconciliation is implemented but has not yet been validated with a signed trade. The optional PolicyGuard contract is locally tested, is not deployed on Monad and is not used by direct wallet sales. Aegis is an experimental prototype without an independent security audit.
 
 ## Documentation
 
-- [MVP assessment](docs/mvp_assessment.md) and [verification report](docs/verification.md)
-- [Architecture](docs/architecture.md), [risk model](docs/risk_model.md) and [Jev design](docs/jev_design.md)
-- [Deployment](docs/deployment.md) and [storage policy](docs/local_storage_policy.md)
-- [AI access](docs/ai_access.md) and [warm design QA](docs/design-qa.md)
-- [Competition requirements](docs/hackathon_requirements.md), [demo script](docs/demo_script.md) and [submission draft](docs/submission.md)
+- [Architecture](docs/architecture.md)
+- [AI access and key handling](docs/ai_access.md)
+- [Risk checks and execution limits](docs/risk_model.md)
+- [Jev assessments](docs/jev_design.md)
+- [Configuration and deployment](docs/deployment.md)
+- [Testing and verification](docs/verification.md)
+- [PolicyGuard contract](contracts/README.md)
+
+Developed by **Arnab Saha**. Released under the [MIT License](LICENSE). See [attribution and AI assistance](ATTRIBUTION.md) for the project's foundation, dependencies and tool disclosures.

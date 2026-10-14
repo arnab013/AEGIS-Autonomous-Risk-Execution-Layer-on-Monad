@@ -1,5 +1,0 @@
-On the dashboard, Scout explains the captured market, policy, and sourced news context. Jev provides a separate structured finding.
-
-Its probabilities compare the available choices; they are not guarantees of a trading result.
-
-Opening the evidence shows the model, timestamp, inputs, and policy checks. This snapshot stays tied to the assessment, even when live prices refresh.

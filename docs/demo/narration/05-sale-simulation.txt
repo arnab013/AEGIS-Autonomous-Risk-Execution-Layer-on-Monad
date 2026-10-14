@@ -1,5 +1,0 @@
-In Market and execution, I prepare a MON reduction within the current limits. The app runs fresh checks and simulates the sale on chain.
-
-The review shows the exact amount, minimum U S D C output, network, contract, gas estimate, and expiry.
-
-This is a simulation. I have not signed this sale, so it is not a confirmed fill. Signing requires a separate wallet action.

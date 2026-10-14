@@ -1,5 +1,0 @@
-In Market and execution, I prepare a MON reduction within the current limits. The app checks the proposal and simulates the exact sale.
-
-After reviewing the amount, minimum U S D C output, contract, gas, and expiry, I explicitly confirm in my wallet.
-
-The transaction is now confirmed. The receipt matches the submitted hash, and the execution record shows the U S D C received. The wallet balances have refreshed.

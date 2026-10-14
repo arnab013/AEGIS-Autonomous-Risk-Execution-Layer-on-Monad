@@ -1,3 +1,0 @@
-Now I ask Scout to lower the session slippage limit from twenty-five to ten basis points. It proposes a before-and-after change.
-
-I review it and click Approve session change. The application validates the change, and only that confirmation applies it.

@@ -41,7 +41,7 @@ If Monad briefly cannot retrieve the requested block, the adapter discards that 
 
 Browser chain reads go through the same-origin /api/rpc endpoint. The server allows only approved read-only RPC methods and uses its configured chain; wallet signing stays with the EIP-1193 provider.
 
-Visible workspaces poll every three seconds locally and every ten seconds on the hosted app. Hidden tabs and the homepage pause polling. The Node gateway caches reads for one second. Mainnet, chain 143, is the default. The documented testnet market on chain 10143 lacked bids during verification. Dated measurements are in the [verification report](verification.md).
+Visible workspaces poll every three seconds locally and every ten seconds on the hosted app. Hidden tabs and the homepage pause polling. The Node gateway caches reads for one second. Mainnet, chain 143, is the default. The documented testnet market on chain 10143 lacked bids during verification. Verification scope is described in [testing and verification](verification.md).
 
 Wallet reads cover MON and USDC. Historical loss, resting orders, perpetual positions and trade flow are not indexed. The terminal marks missing portfolio fields unavailable. The model receives incomplete live evidence; it cannot authorize unattended trading.
 
@@ -73,7 +73,7 @@ Live execution supports a native MON market sale for USDC. Preparation reads fre
 
 Prepared proposals expire after 30 seconds, with a one-second UI clock. Invalid policy fields block assessment, preparation and signing. Before opening the wallet, submission checks account, chain, policy, proposal integrity, current market and simulation. These are application preflight checks: Kuru's direct sell ABI has no deadline, so a wallet prompt can remain open after expiry. Reject a stale prompt.
 
-A returned hash is recorded as submitted even if receipt retrieval times out. Confirmation verifies transaction calldata/value and successful receipt; token transfers measure delivered USDC. Prepared, awaiting wallet, pending, reverted, stopped and confirmed states remain separate, and balances refresh from chain. Read-only simulation has passed; no trade has been signed in this session.
+A returned hash is recorded as submitted even if receipt retrieval times out. Confirmation verifies transaction calldata/value and successful receipt; token transfers measure delivered USDC. Prepared, awaiting wallet, pending, reverted, stopped and confirmed states remain separate, and balances refresh from chain. Read-only simulation has passed; signed-sale reconciliation has not yet been validated with a signed trade.
 
 Manual trades have their own proposal, checks and transaction evidence without AI probability fields. Agent-originated trades also retain the recommendation reference. Assessment evidence stays tied to its original holdings and inputs.
 
