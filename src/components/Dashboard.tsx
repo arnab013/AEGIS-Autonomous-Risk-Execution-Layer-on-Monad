@@ -135,7 +135,9 @@ export function Dashboard({
             <strong>
               {hasPosition && position
                 ? '$' + amount(position.spot_exposure_usd)
-                : 'Connect wallet'}
+                : live && walletAddress
+                  ? 'Reading wallet balances…'
+                  : 'Connect wallet'}
             </strong>
             <p>Position limit ${amount(policy.max_position_usd, 0)}</p>
           </article>

@@ -52,13 +52,26 @@ export async function inferenceApi<T>(
   value?: unknown,
   access?: AiAccess
 ): Promise<T> {
-  const response = await fetch(path, {
-    method: value === undefined ? 'GET' : 'POST',
-    headers: access ? aiHeaders(access) : { 'Content-Type': 'application/json' },
-    ...(value === undefined ? {} : { body: JSON.stringify(value) }),
-    credentials: 'same-origin',
-  });
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
-  return result;
+  const controller = path === '/api/agent' ? new AbortController() : undefined;
+  const timeout = controller ? setTimeout(() => controller.abort(), 120_000) : undefined;
+  try {
+    const response = await fetch(path, {
+      method: value === undefined ? 'GET' : 'POST',
+      headers: access ? aiHeaders(access) : { 'Content-Type': 'application/json' },
+      ...(value === undefined ? {} : { body: JSON.stringify(value) }),
+      credentials: 'same-origin',
+      ...(controller ? { signal: controller.signal } : {}),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
+    return result;
+  } catch (error) {
+    if (controller?.signal.aborted)
+      throw new Error(
+        'Scout took too long to respond. No action was approved. The server request may still be running; avoid immediately retrying.'
+      );
+    throw error;
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+  }
 }

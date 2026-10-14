@@ -46,6 +46,7 @@ import { buildJevStatePayload } from './jev/stateBuilder.ts';
 import { snapshotFromAgent } from './ui/agentEvidence.ts';
 import { AppSidebar } from './components/AppSidebar.tsx';
 import { usePageMotion } from './ui/motion.ts';
+import { liveReadsAllowed, walletBalancesReady } from './ui/sessionActivity.ts';
 
 interface ServiceStatus {
   inferenceEnabled: boolean;
@@ -94,6 +95,7 @@ export const Terminal: React.FC = () => {
   const [chartHistory, setChartHistory] = useState<{ time: number; price: number }[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [agentPending, setAgentPending] = useState(false);
+  const agentReadPending = useRef(false);
   const [agentError, setAgentError] = useState('');
   const [agentIntent, setAgentIntent] = useState<PendingAgentIntent | null>(null);
   const [intentStates, setIntentStates] = useState<
@@ -136,11 +138,13 @@ export const Terminal: React.FC = () => {
   const [marketError, setMarketError] = useState('');
   const [wallet, setWallet] = useState<string | null>(null);
   const [balance, setBalance] = useState<string | null>(null);
+  const [walletReadAccount, setWalletReadAccount] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [block, setBlock] = useState('Unavailable');
   const [latency, setLatency] = useState<number | null>(null);
   const [clip, setClip] = useState(250);
   const [prepared, setPrepared] = useState<KuruPreparedTrade | null>(null);
+  const [preparing, setPreparing] = useState(false);
   const [tradeState, setTradeState] = useState<TradeLifecycle>({ status: 'idle' });
   const tradeStateRef = useRef(tradeState);
   tradeStateRef.current = tradeState;
@@ -177,6 +181,7 @@ export const Terminal: React.FC = () => {
   const scenario = REPLAY_SCENARIOS.find((item) => item.id === scenarioId)!;
   const networkConfig = status?.chainId === 143 ? monadMainnetConfig : monadTestnetConfig;
   const kuruConfig = status?.chainId === 143 ? kuruMainnetConfig : kuruTestnetConfig;
+  const balancesReady = walletBalancesReady(wallet, walletReadAccount);
 
   function updateTrade(next: TradeLifecycle) {
     tradeStateRef.current = next;
@@ -317,6 +322,7 @@ export const Terminal: React.FC = () => {
     stateRef.current = null;
     setNotice('');
     setMarketError('');
+    setWalletReadAccount(null);
     replayClock.current = replayEpoch;
     const next =
       mode === 'replay'
@@ -364,86 +370,101 @@ export const Terminal: React.FC = () => {
     }
   }, [mode, scenarioId, resetVersion]);
 
-  const refreshMarket = useCallback(async () => {
-    if (mode !== 'live' || modeRef.current !== 'live') return;
-    const token = generation.current;
-    const request = ++marketRequest.current;
-    const snapshot = await api<KuruMarketData>('/api/market');
-    if (
-      generation.current !== token ||
-      request !== marketRequest.current ||
-      walletRef.current !== wallet
-    )
-      return;
-    const current = engine.current;
-    current.market.pair = snapshot.pair;
-    current.updateMarketState(snapshot.bids, snapshot.asks, 0, 0, snapshot.timestamp);
-    current.market.pair = snapshot.pair;
-    setBlock(String(snapshot.blockNumber));
-    setLatency(snapshot.latencyMs);
-    if (snapshot.metadata) {
-      setMinimumMon(
-        String(Number(snapshot.metadata.minSize) / Number(snapshot.metadata.sizePrecision))
-      );
-      sizeDecimals.current = Math.round(Math.log10(Number(snapshot.metadata.sizePrecision)));
-    }
-    if (wallet) {
-      const holdings = await api<{ mon: string; usdc: string }>(
-        `/api/portfolio?account=${encodeURIComponent(wallet)}`
-      );
+  const refreshMarket = useCallback(
+    async (background = false) => {
+      if (mode !== 'live' || modeRef.current !== 'live') return;
+      const token = generation.current;
+      const request = ++marketRequest.current;
+      const snapshot = await api<KuruMarketData>('/api/market');
       if (
         generation.current !== token ||
         request !== marketRequest.current ||
-        walletRef.current !== wallet
+        walletRef.current !== wallet ||
+        (background && !liveReadsAllowed(pending.current, agentReadPending.current))
       )
         return;
-      setBalance(holdings.mon);
-      const mon = Number(holdings.mon),
-        usdc = Number(holdings.usdc);
-      const exposure = mon * current.market.mid_price;
-      current.position = {
-        ...emptyPosition(),
-        spot_balance_mon: mon,
-        usdc_balance: usdc,
-        spot_exposure_usd: exposure,
-        net_delta: exposure,
-        leverage: exposure / Math.max(exposure + usdc, 0.00001),
-      };
-    } else current.position = emptyPosition();
-    const first =
-      stateRef.current || !validInputs.current
-        ? null
-        : await current.step(clip, { execute: false });
-    if (
-      generation.current !== token ||
-      request !== marketRequest.current ||
-      walletRef.current !== wallet
-    )
-      return;
-    setState((previous) =>
-      previous
-        ? {
-            ...previous,
-            market: structuredClone(current.market),
-            position: { ...current.position },
-            risk: current.computeRiskMetrics(),
-            orders: structuredClone(current.orders),
-          }
-        : first
-    );
-    if (first) setAssessment(createAssessmentSnapshot(first, 'live'));
-    setMarketError('');
-  }, [mode, wallet]);
+      const current = engine.current;
+      current.market.pair = snapshot.pair;
+      current.updateMarketState(snapshot.bids, snapshot.asks, 0, 0, snapshot.timestamp);
+      current.market.pair = snapshot.pair;
+      setBlock(String(snapshot.blockNumber));
+      setLatency(snapshot.latencyMs);
+      if (snapshot.metadata) {
+        setMinimumMon(
+          String(Number(snapshot.metadata.minSize) / Number(snapshot.metadata.sizePrecision))
+        );
+        sizeDecimals.current = Math.round(Math.log10(Number(snapshot.metadata.sizePrecision)));
+      }
+      if (wallet) {
+        const holdings = await api<{ mon: string; usdc: string }>(
+          `/api/portfolio?account=${encodeURIComponent(wallet)}`
+        );
+        if (
+          generation.current !== token ||
+          request !== marketRequest.current ||
+          walletRef.current !== wallet ||
+          (background && !liveReadsAllowed(pending.current, agentReadPending.current))
+        )
+          return;
+        setBalance(holdings.mon);
+        const mon = Number(holdings.mon),
+          usdc = Number(holdings.usdc);
+        const exposure = mon * current.market.mid_price;
+        current.position = {
+          ...emptyPosition(),
+          spot_balance_mon: mon,
+          usdc_balance: usdc,
+          spot_exposure_usd: exposure,
+          net_delta: exposure,
+          leverage: exposure / Math.max(exposure + usdc, 0.00001),
+        };
+      } else current.position = emptyPosition();
+      const first =
+        stateRef.current || !validInputs.current
+          ? null
+          : await current.step(clip, { execute: false });
+      if (
+        generation.current !== token ||
+        request !== marketRequest.current ||
+        walletRef.current !== wallet ||
+        (background && !liveReadsAllowed(pending.current, agentReadPending.current))
+      )
+        return;
+      setState((previous) =>
+        previous
+          ? {
+              ...previous,
+              market: structuredClone(current.market),
+              position: { ...current.position },
+              risk: current.computeRiskMetrics(),
+              orders: structuredClone(current.orders),
+            }
+          : first
+      );
+      // Live initialization uses a disabled model client; Scout owns its assessment while pending.
+      if (first && !agentReadPending.current)
+        setAssessment((previous) => previous ?? createAssessmentSnapshot(first, 'live'));
+      setWalletReadAccount(wallet);
+      setMarketError('');
+    },
+    [mode, wallet]
+  );
 
   useEffect(() => {
     if (mode !== 'live' || route === '/') return;
     let cancelled = false,
       running = false;
     const poll = async () => {
-      if (running || cancelled || pending.current || document.visibilityState === 'hidden') return;
+      if (
+        running ||
+        cancelled ||
+        !liveReadsAllowed(pending.current, agentReadPending.current) ||
+        document.visibilityState === 'hidden'
+      )
+        return;
       running = true;
       try {
-        await refreshMarket();
+        await refreshMarket(true);
       } catch (error) {
         if (!cancelled) setMarketError(`Live market unavailable: ${(error as Error).message}`);
       } finally {
@@ -545,6 +566,7 @@ export const Terminal: React.FC = () => {
     walletRef.current = null;
     setWallet(null);
     setBalance(null);
+    setWalletReadAccount(null);
     setPrepared(null);
     invalidateProposal('Wallet disconnected. Reconnect and prepare a fresh proposal.');
     if (mode === 'live') {
@@ -576,6 +598,7 @@ export const Terminal: React.FC = () => {
       setPrepared(null);
       invalidateProposal('Wallet connected. Prepare a fresh proposal for this account.');
       setWallet(result.address);
+      setWalletReadAccount(null);
       walletRef.current = result.address;
       setBalance(walletBalance);
     } catch (error) {
@@ -591,6 +614,7 @@ export const Terminal: React.FC = () => {
       walletRef.current = null;
       setWallet(null);
       setBalance(null);
+      setWalletReadAccount(null);
       setPrepared(null);
       const trade = tradeStateRef.current;
       if (trade.status === 'prepared' || trade.status === 'awaiting_wallet')
@@ -642,6 +666,7 @@ export const Terminal: React.FC = () => {
       policyVersion = authorizationVersion.current;
     const current = engine.current;
     setBusy(true);
+    setPreparing(true);
     setPrepared(null);
     updateTrade({ status: 'idle' });
     setTradeChecks(null);
@@ -710,6 +735,7 @@ export const Terminal: React.FC = () => {
     } finally {
       pending.current = false;
       setBusy(false);
+      setPreparing(false);
     }
   }
   async function submitReduction() {
@@ -1007,6 +1033,7 @@ export const Terminal: React.FC = () => {
     setAgentIntent(null);
     setAgentError('');
     setAgentPending(true);
+    agentReadPending.current = true;
     setBusy(true);
     pending.current = true;
     setPlaying(false);
@@ -1053,6 +1080,7 @@ export const Terminal: React.FC = () => {
       setAgentError((error as Error).message);
     } finally {
       pending.current = false;
+      agentReadPending.current = false;
       setAgentPending(false);
       setBusy(false);
       void refreshAiStatus().catch(() => {});
@@ -1213,7 +1241,7 @@ export const Terminal: React.FC = () => {
         <Dashboard
           mode={mode}
           market={state?.market}
-          position={state?.position}
+          position={mode === 'live' && !balancesReady ? undefined : state?.position}
           walletAddress={wallet}
           chainId={status?.chainId}
           now={now}
@@ -1481,8 +1509,12 @@ export const Terminal: React.FC = () => {
                   minimumMon={minimumMon}
                   tradeSizeUsd={clip}
                   busy={busy}
+                  preparing={preparing}
+                  agentPending={agentPending}
                   hasWallet={Boolean(wallet)}
-                  canPrepare={Boolean(wallet && status && !policy.is_paused && inputsAreValid)}
+                  canPrepare={Boolean(
+                    wallet && balancesReady && status && !policy.is_paused && inputsAreValid
+                  )}
                   canSubmit={Boolean(
                     wallet &&
                       status &&
@@ -1512,6 +1544,7 @@ export const Terminal: React.FC = () => {
               <div className="portfolio-slot">
                 <PortfolioPanel
                   hasWallet={Boolean(wallet)}
+                  balancesReady={balancesReady}
                   position={state.position}
                   orders={state.orders}
                   policy={policy}

@@ -5,6 +5,9 @@ import { JevPolicyPanel } from '../src/components/JevPolicyPanel.tsx';
 import { DecisionFlow } from '../src/components/DecisionFlow.tsx';
 import { ExplainabilityModal } from '../src/components/ExplainabilityModal.tsx';
 import { TradeReview } from '../src/components/TradeReview.tsx';
+import { PortfolioPanel } from '../src/components/PortfolioPanel.tsx';
+import { Dashboard } from '../src/components/Dashboard.tsx';
+import { liveReadsAllowed, walletBalancesReady } from '../src/ui/sessionActivity.ts';
 import { Header } from '../src/components/Header.tsx';
 import { AuditTrailPanel } from '../src/components/AuditTrailPanel.tsx';
 import { StateEngine } from '../src/engine/stateEngine.ts';
@@ -163,7 +166,12 @@ function manualEvidence(trade = proposal()): Extract<EvidenceContext, { kind: 'm
   };
 }
 
-function review(transaction: TradeLifecycle, prepared: KuruPreparedTrade | null, now: number) {
+function review(
+  transaction: TradeLifecycle,
+  prepared: KuruPreparedTrade | null,
+  now: number,
+  activity: { busy?: boolean; agentPending?: boolean; preparing?: boolean } = {}
+) {
   return renderToStaticMarkup(
     <TradeReview
       transaction={transaction}
@@ -174,7 +182,9 @@ function review(transaction: TradeLifecycle, prepared: KuruPreparedTrade | null,
       tradeSizeUsd={5}
       canPrepare={true}
       canSubmit={true}
-      busy={false}
+      busy={activity.busy ?? false}
+      agentPending={activity.agentPending}
+      preparing={activity.preparing}
       hasWallet={true}
       onPrepare={noop}
       onSubmit={noop}
@@ -273,6 +283,27 @@ describe('Financial provenance survives presentation', () => {
 });
 
 describe('Trade review cannot imply authorization or a receipt', () => {
+  it('allows read-only Scout context refresh while preparation and signing stay disabled', () => {
+    const activity = { busy: true, agentPending: true };
+    expect(liveReadsAllowed(activity.busy, activity.agentPending)).toBe(true);
+    const idle = review({ status: 'idle' }, null, epoch, activity);
+    expect(buttons(idle)).toContainEqual({ label: 'Waiting for Scout…', disabled: true });
+    expect(text(idle)).not.toContain('Preparing & simulating');
+    const trade = proposal();
+    const prepared = review({ status: 'prepared', proposal: trade }, trade, epoch, activity);
+    expect(buttons(prepared)).toContainEqual({ label: 'Confirm in wallet', disabled: true });
+    expect(liveReadsAllowed(true, false)).toBe(false);
+    expect(liveReadsAllowed(false, false)).toBe(true);
+    const preparing = review({ status: 'idle' }, null, epoch, {
+      busy: true,
+      preparing: true,
+    });
+    expect(buttons(preparing)).toContainEqual({
+      label: 'Preparing & simulating…',
+      disabled: true,
+    });
+  });
+
   it('offers no enabled wallet confirmation once the proposal expires', () => {
     const trade = proposal();
     const transaction: TradeLifecycle = { status: 'prepared', proposal: trade };
@@ -330,5 +361,67 @@ describe('Trade review cannot imply authorization or a receipt', () => {
     expect(output).toContain('Paper activity · no chain execution');
     expect(output).not.toMatch(/Mainnet|block 111000000|Observed 1s ago/);
     expect(markup).not.toMatch(/connection-dot[^"\n]*is-fresh/);
+  });
+});
+
+describe('Connected wallet reads distinguish unavailable values from verified zero', () => {
+  const account = '0x000000000000000000000000000000000000dEaD';
+  const otherAccount = '0x000000000000000000000000000000000000bEEF';
+
+  function portfolio(observedAccount: string | null) {
+    const engine = new StateEngine();
+    engine.position.spot_balance_mon = 0;
+    engine.position.usdc_balance = 0;
+    engine.position.spot_exposure_usd = 0;
+    return renderToStaticMarkup(
+      <PortfolioPanel
+        position={engine.position}
+        orders={engine.orders}
+        policy={engine.policy}
+        risk={engine.computeRiskMetrics()}
+        live
+        hasWallet
+        balancesReady={walletBalancesReady(account, observedAccount)}
+      />
+    );
+  }
+
+  it.each([null, otherAccount])(
+    'hides zero placeholders without a read for this account',
+    (read) => {
+      const output = text(portfolio(read));
+      expect(output).toContain('Reading connected wallet balances');
+      expect(output).not.toContain('MON balance 0 MON');
+      expect(output).not.toContain('USDC balance 0 USDC');
+    }
+  );
+
+  it('shows actual zero after a successful read for the same account, regardless of casing', () => {
+    const output = text(portfolio(account.toLowerCase()));
+    expect(output).toContain('MON balance 0 MON');
+    expect(output).toContain('USDC balance 0 USDC');
+    expect(output).not.toContain('Reading connected wallet balances');
+    expect(walletBalancesReady(null, account)).toBe(false);
+  });
+
+  it('does not ask an already connected dashboard wallet to connect again while reading', () => {
+    const engine = new StateEngine();
+    const output = text(
+      renderToStaticMarkup(
+        <Dashboard
+          mode="live"
+          walletAddress={account}
+          policy={engine.policy}
+          events={[]}
+          chat={null}
+          onOpenWorkspace={noop}
+          onReplay={noop}
+          onHome={noop}
+          onOpenAiAccess={noop}
+        />
+      )
+    );
+    expect(output).toContain('Reading wallet balances…');
+    expect(output).not.toContain('Connect wallet');
   });
 });

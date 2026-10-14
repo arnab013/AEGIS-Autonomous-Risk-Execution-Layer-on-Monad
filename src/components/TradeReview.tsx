@@ -14,6 +14,8 @@ interface TradeReviewProps {
   canPrepare: boolean;
   canSubmit: boolean;
   busy: boolean;
+  preparing?: boolean;
+  agentPending?: boolean;
   hasWallet: boolean;
   onPrepare: () => void;
   onSubmit: () => void;
@@ -42,6 +44,8 @@ export function TradeReview({
   canPrepare,
   canSubmit,
   busy,
+  preparing = false,
+  agentPending = false,
   hasWallet,
   onPrepare,
   onSubmit,
@@ -182,7 +186,13 @@ export function TradeReview({
             disabled={!canPrepare || busy || unresolved}
             onClick={onPrepare}
           >
-            {busy ? 'Reviewing…' : 'Prepare & simulate'}
+            {preparing
+              ? 'Preparing & simulating…'
+              : agentPending
+                ? 'Waiting for Scout…'
+                : busy
+                  ? 'Another review is in progress'
+                  : 'Prepare & simulate'}
           </button>
         )}
         {proposal && <button onClick={onInspect}>Trade evidence</button>}

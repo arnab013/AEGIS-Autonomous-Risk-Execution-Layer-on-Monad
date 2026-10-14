@@ -9,6 +9,7 @@ interface PortfolioPanelProps {
   risk: RiskMetrics;
   live?: boolean;
   hasWallet?: boolean;
+  balancesReady?: boolean;
 }
 
 function LimitMeter({ label, value, ratio }: { label: string; value: string; ratio: number }) {
@@ -39,9 +40,11 @@ export const PortfolioPanel: React.FC<PortfolioPanelProps> = ({
   risk,
   live = false,
   hasWallet = false,
+  balancesReady = hasWallet,
 }) => {
   const pnl = position.realized_pnl_today + position.unrealized_pnl;
   const disconnected = live && !hasWallet;
+  const waitingForBalances = live && hasWallet && !balancesReady;
 
   return (
     <section className="portfolio-card terminal-card" aria-labelledby="portfolio-title">
@@ -55,15 +58,27 @@ export const PortfolioPanel: React.FC<PortfolioPanelProps> = ({
           </h2>
         </div>
         <span className="panel-status">
-          {live ? (hasWallet ? 'WALLET BALANCES' : 'WALLET DISCONNECTED') : 'PAPER PORTFOLIO'}
+          {live
+            ? disconnected
+              ? 'WALLET DISCONNECTED'
+              : waitingForBalances
+                ? 'READING WALLET'
+                : 'WALLET BALANCES'
+            : 'PAPER PORTFOLIO'}
         </span>
       </header>
       <div className="portfolio-body">
-        {disconnected ? (
+        {disconnected || waitingForBalances ? (
           <div className="portfolio-empty">
-            <h3>Connect a wallet to inspect balances</h3>
+            <h3>
+              {waitingForBalances
+                ? 'Reading connected wallet balances'
+                : 'Connect a wallet to inspect balances'}
+            </h3>
             <p>
-              Wallet exposure and utilization are unavailable until MON and USDC balances are read.
+              {waitingForBalances
+                ? 'MON, USDC and exposure remain unavailable until a successful read for this account.'
+                : 'Wallet exposure and utilization are unavailable until MON and USDC balances are read.'}
             </p>
           </div>
         ) : (
